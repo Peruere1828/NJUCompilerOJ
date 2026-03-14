@@ -1,0 +1,27 @@
+.vscode/
+tmp/
+.cache/
+.venv/
+__pycache__/
+
+# 可执行文件
+Code/parser
+
+# 生成的词法/语法文件
+lex.yy.c
+syntax.tab.c
+syntax.tab.h
+syntax.output
+
+# 编译中间文件
+*.o
+*.d
+
+# 备份文件
+*~
+
+*.zip
+
+parser
+
+report.pdf
