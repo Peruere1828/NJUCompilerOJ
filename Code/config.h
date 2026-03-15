@@ -10,6 +10,6 @@
 // 识别科学记数法小数
 #define STAGE_ONE_REQ_TWO 1
 // 识别单行注释和跨行注释
-// #define STAGE_ONE_REQ_THREE 1
+#define STAGE_ONE_REQ_THREE 1
 
 #endif

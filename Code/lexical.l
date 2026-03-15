@@ -41,6 +41,10 @@ HEX_INT     0[xX][0-9a-fA-F]+
 NORMAL_FLOAT [0-9]+\.[0-9]+
 SCI_FLOAT    ([0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)[eE][+-]?[0-9]+
 
+SINGLE_COMMENT  "//".*
+/* 用状态机实现跨行注释 */
+%x BLOCK_COMMENT
+
 %%
 "int"|"float"   {
     yylval.node = create_token_node(TOKEN_TYPE, "TYPE", yylineno);
@@ -118,13 +122,27 @@ SCI_FLOAT    ([0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)[eE][+-]?[0-9]+
 #endif
 }
 
-"//".*          {
+{SINGLE_COMMENT}    {
 #ifdef STAGE_ONE_REQ_THREE 
     /* 忽略单行注释 */
 #else
-    yyless(2);
-    handle_error("//");
+    yyless(1);
+    CREATE_AND_RET(DIV);
 #endif
+}
+
+"/*"                {
+#ifdef STAGE_ONE_REQ_THREE 
+    BEGIN(BLOCK_COMMENT);
+#else
+    yyless(1);
+    CREATE_AND_RET(DIV);
+#endif    
+}
+
+<BLOCK_COMMENT>{
+    "*/"    { BEGIN(INITIAL); }
+    .|\n    { /* 忽略注释 */ }
 }
 
 ";"             { CREATE_AND_RET(SEMI); }
