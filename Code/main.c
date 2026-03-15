@@ -1,5 +1,6 @@
 #include <stdio.h>
 
+#include "AST.h"
 #include "config.h"
 
 extern FILE* yyin;
@@ -9,7 +10,9 @@ extern int yylex();
 extern const char* get_token_name(int);
 extern int yyparse();
 extern int LEX_ERROR;
+extern int SYNTAX_ERROR;
 extern int yydebug;
+extern ASTNode* root;
 
 int main(int argc, char** argv) {
   if (argc <= 1) {
@@ -36,13 +39,12 @@ int main(int argc, char** argv) {
 
   int result = yyparse();
 
-  if (result == 0) {
-    printf("Parsing SUCCESS!\n");
+  if (LEX_ERROR == 0 && SYNTAX_ERROR == 0 && result == 0) {
+    // printf("Parsing SUCCESS!\n");
+    print_AST(root, 0);
   } else {
-    printf("Parsing FAILED\n");
+    // printf("Parsing FAILED\n");
   }
-
-  printf("LEXERROR: %d\n", LEX_ERROR);
   fclose(f);
   return 0;
 }

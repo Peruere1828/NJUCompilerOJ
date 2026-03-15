@@ -2,9 +2,6 @@
 #define AST_H
 
 #include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #include "config.h"
 
@@ -78,74 +75,16 @@ typedef struct ASTNode {
   int child_count;
 } ASTNode;
 
-// 创建一个语法单元的节点
-ASTNode* create_AST_node(NodeKind kind, const char* name, int child_count,
-                         ...) {
-  ASTNode* node = (ASTNode*)malloc(sizeof(ASTNode));
-  node->kind = kind;
-  node->name = strdup(name);
-  node->child_count = child_count;
-  if (child_count > 0) {
-    node->children = (ASTNode**)malloc(sizeof(ASTNode*) * child_count);
-  } else {
-    node->children = NULL;
-  }
-  va_list args;
-  va_start(args, child_count);
-  for (int i = 0; i < child_count; i++) {
-    node->children[i] = va_arg(args, ASTNode*);
-  }
-  va_end(args);
+// 将字符串复制到新建立的空间
+char* strdup(const char * src_str);
 
-  // 取第一个儿子的lineno作为当前语法单元的lineno
-  if (child_count > 0 && node->children[0] != NULL) {
-    node->lineno = node->children[0]->lineno;
-  } else {
-    node->lineno = -1;
-  }
-  return node;
-}
+// 创建一个语法单元的节点
+ASTNode* create_AST_node(NodeKind kind, const char* name, int child_count, ...);
 
 // 创建一个词法单元的节点，注意不会填写val部分
-ASTNode* create_token_node(NodeKind kind, const char* name, int lineno) {
-  ASTNode* node = (ASTNode*)malloc(sizeof(ASTNode));
-  node->kind = kind;
-  node->name = strdup(name);
-  node->lineno = lineno;
-  node->child_count = 0;
-  node->children = NULL;
-  return node;
-}
+ASTNode* create_token_node(NodeKind kind, const char* name, int lineno);
 
 // 先序遍历，打印信息，缩进 depth*2 个空格
-void print_AST(ASTNode* node, int depth) {
-  if (node == NULL) return;
-  // 是语法单元且产生空串
-  if (node->kind < NodeKind::TOKEN_INT && node->child_count == 0) return;
-
-  for (int i = 0; i < depth; i++) {
-    printf("  ");
-  }
-  if (node->kind < NodeKind::TOKEN_INT) {
-    // 语法单元
-    printf("%s (%d)\n", node->name, node->lineno);
-  } else {
-    // 词法单元
-    printf("%s", node->name);
-    if (node->kind == NodeKind::TOKEN_ID ||
-        node->kind == NodeKind::TOKEN_TYPE) {
-      printf(": %s", node->val.str_val);
-    } else if (node->kind == TOKEN_INT) {
-      printf(": %d", node->val.int_val);
-    } else if (node->kind == TOKEN_FLOAT) {
-      printf(": %f", node->val.float_val);
-    }
-    printf("\n");
-  }
-
-  for (int i = 0; i < node->child_count; i++) {
-    print_AST(node->children[i], depth + 1);
-  }
-}
+void print_AST(ASTNode* node, int depth);
 
 #endif

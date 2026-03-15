@@ -9,18 +9,28 @@
 int yylex();
 void yyerror(const char *s);
 extern int yylineno;
+
+ASTNode* root;  // 用于存储语法树的根节点
+
+int SYNTAX_ERROR = 0; // 语法错误计数器
 %}
 
+%union {
+  ASTNode* node;
+}
+
+%type <node> Program ExtDefList ExtDef ExtDecList Specifier StructSpecifier OptTag Tag VarDec FunDec VarList ParamDec CompSt StmtList Stmt DefList Def DecList Dec Exp Args
+
 /* 定义 Tokens */
-%token INT
-%token FLOAT
-%token ID
-%token SEMI COMMA ASSIGNOP RELOP
-%token PLUS MINUS STAR DIV
-%token AND OR DOT NOT
-%token TYPE
-%token LP RP LB RB LC RC
-%token STRUCT RETURN IF ELSE WHILE
+%token <node> INT
+%token <node> FLOAT
+%token <node> ID
+%token <node> SEMI COMMA ASSIGNOP RELOP
+%token <node> PLUS MINUS STAR DIV
+%token <node> AND OR DOT NOT
+%token <node> TYPE
+%token <node> LP RP LB RB LC RC
+%token <node> STRUCT RETURN IF ELSE WHILE
 
 /* 定义结合性和优先级，从上到下优先级递增 */
 %right ASSIGNOP
@@ -44,124 +54,232 @@ extern int yylineno;
 /* --- 产生式规则 --- */
 
 Program:
-    ExtDefList
+    ExtDefList {
+      root = $$ = create_AST_node(NODE_PROGRAM, "Program", 1, $1);
+    }
   ;
 
 ExtDefList:
-    ExtDef ExtDefList
-  | /* empty */
+    ExtDef ExtDefList {
+      $$ = create_AST_node(NODE_EXTDEFLIST, "ExtDefList", 2, $1, $2);
+    }
+  | /* empty */ { $$ = NULL;}
   ;
 
 ExtDef:
-    Specifier ExtDecList SEMI
-  | Specifier SEMI
-  | Specifier FunDec CompSt
+    Specifier ExtDecList SEMI {
+      $$ = create_AST_node(NODE_EXTDEF, "ExtDef", 3, $1, $2, $3);
+    }
+  | Specifier SEMI {
+      $$ = create_AST_node(NODE_EXTDEF, "ExtDef", 2, $1, $2);
+    }
+  | Specifier FunDec CompSt {
+      $$ = create_AST_node(NODE_EXTDEF, "ExtDef", 3, $1, $2, $3);
+    }
   ;
 
 ExtDecList:
-    VarDec
-  | VarDec COMMA ExtDecList
+    VarDec {
+      $$ = create_AST_node(NODE_EXTDECLIST, "ExtDecList", 1, $1);
+    }
+  | VarDec COMMA ExtDecList {
+      $$ = create_AST_node(NODE_EXTDECLIST, "ExtDecList", 3, $1, $2, $3);
+    }
   ;
 
 Specifier:
-    TYPE
-  | StructSpecifier
+    TYPE {
+      $$ = create_AST_node(NODE_SPECIFIER, "Specifier", 1, $1);
+    }
+  | StructSpecifier {
+      $$ = create_AST_node(NODE_SPECIFIER, "Specifier", 1, $1);
+    }
   ;
 
 StructSpecifier:
-    STRUCT OptTag LC DefList RC
-  | STRUCT Tag
+    STRUCT OptTag LC DefList RC {
+      $$ = create_AST_node(NODE_STRUCTSPECIFIER, "StructSpecifier", 5, $1, $2, $3, $4, $5);
+    }
+  | STRUCT Tag {
+      $$ = create_AST_node(NODE_STRUCTSPECIFIER, "StructSpecifier", 2, $1, $2);
+    }
   ;
 
 OptTag:
-    ID
-  | /* empty */
+    ID {
+      $$ = create_AST_node(NODE_OPTTAG, "OptTag", 1, $1);
+    }
+  | /* empty */ { $$ = NULL;}
   ;
 
 Tag:
-    ID
+    ID {
+      $$ = create_AST_node(NODE_TAG, "Tag", 1, $1);
+    }
   ;
 
 VarDec:
-    ID
-  | VarDec LB INT RB
+    ID {
+      $$ = create_AST_node(NODE_VARDEC, "VarDec", 1, $1);
+    }
+  | VarDec LB INT RB {
+      $$ = create_AST_node(NODE_VARDEC, "VarDec", 4, $1, $2, $3, $4);
+    }
   ;
 
 FunDec:
-    ID LP VarList RP
-  | ID LP RP
+    ID LP VarList RP {
+      $$ = create_AST_node(NODE_FUNDEC, "FunDec", 4, $1, $2, $3, $4);
+    }
+  | ID LP RP {
+      $$ = create_AST_node(NODE_FUNDEC, "FunDec", 3, $1, $2, $3);
+    }
   ;
 
 VarList:
-    ParamDec COMMA VarList
-  | ParamDec
+    ParamDec COMMA VarList {
+      $$ = create_AST_node(NODE_VARLIST, "VarList", 3, $1, $2, $3);
+    }
+  | ParamDec {
+      $$ = create_AST_node(NODE_VARLIST, "VarList", 1, $1);
+    }
   ;
 
 ParamDec:
-    Specifier VarDec
+    Specifier VarDec {
+      $$ = create_AST_node(NODE_PARAMDEC, "ParamDec", 2, $1, $2);
+    }
   ;
 
 CompSt:
-    LC DefList StmtList RC
+    LC DefList StmtList RC {
+      $$ = create_AST_node(NODE_COMPST, "CompSt", 4, $1, $2, $3, $4);
+    }
   ;
 
 StmtList:
-    Stmt StmtList
-  | /* empty */
+    Stmt StmtList {
+      $$ = create_AST_node(NODE_STMTLIST, "StmtList", 2, $1, $2);
+    }
+  | /* empty */ { $$ = NULL;}
   ;
 
 Stmt:
-    Exp SEMI
-  | CompSt
-  | RETURN Exp SEMI
-  | IF LP Exp RP Stmt %prec LOWER_THAN_ELSE
-  | IF LP Exp RP Stmt ELSE Stmt
-  | WHILE LP Exp RP Stmt
+    Exp SEMI {
+      $$ = create_AST_node(NODE_STMT, "Stmt", 2, $1, $2);
+    }
+  | CompSt {
+      $$ = create_AST_node(NODE_STMT, "Stmt", 1, $1);
+    }
+  | RETURN Exp SEMI {
+      $$ = create_AST_node(NODE_STMT, "Stmt", 3, $1, $2, $3);
+    }
+  | IF LP Exp RP Stmt %prec LOWER_THAN_ELSE {
+      $$ = create_AST_node(NODE_STMT, "Stmt", 5, $1, $2, $3, $4, $5);
+    }
+  | IF LP Exp RP Stmt ELSE Stmt {
+      $$ = create_AST_node(NODE_STMT, "Stmt", 7, $1, $2, $3, $4, $5, $6, $7);
+    }
+  | WHILE LP Exp RP Stmt {
+      $$ = create_AST_node(NODE_STMT, "Stmt", 5, $1, $2, $3, $4, $5);
+    }
   ;
 
 DefList:
-    Def DefList
-  | /* empty */
+    Def DefList {
+      $$ = create_AST_node(NODE_DEFLIST, "DefList", 2, $1, $2);
+    }
+  | /* empty */ { $$ = NULL;}
   ;
 
 Def:
-    Specifier DecList SEMI
+    Specifier DecList SEMI {
+      $$ = create_AST_node(NODE_DEF, "Def", 3, $1, $2, $3);
+    }
   ;
 
 DecList:
-    Dec
-  | Dec COMMA DecList
+    Dec {
+      $$ = create_AST_node(NODE_DECLIST, "DecList", 1, $1);
+    }
+  | Dec COMMA DecList {
+      $$ = create_AST_node(NODE_DECLIST, "DecList", 3, $1, $2, $3);
+    }
   ;
 
 Dec:
-    VarDec
-  | VarDec ASSIGNOP Exp
+    VarDec {
+      $$ = create_AST_node(NODE_DEC, "Dec", 1, $1);
+    }
+  | VarDec ASSIGNOP Exp {
+      $$ = create_AST_node(NODE_DEC, "Dec", 3, $1, $2, $3);
+    }
   ;
 
 Exp:
-    Exp ASSIGNOP Exp
-  | Exp AND Exp
-  | Exp OR Exp
-  | Exp RELOP Exp
-  | Exp PLUS Exp
-  | Exp MINUS Exp
-  | Exp STAR Exp
-  | Exp DIV Exp
-  | LP Exp RP
-  | MINUS Exp %prec UMINUS
-  | NOT Exp
-  | ID LP Args RP
-  | ID LP RP
-  | Exp LB Exp RB
-  | Exp DOT ID
-  | ID
-  | INT
-  | FLOAT
+    Exp ASSIGNOP Exp {
+      $$ = create_AST_node(NODE_EXP, "Exp", 3, $1, $2, $3);
+    }
+  | Exp AND Exp {
+      $$ = create_AST_node(NODE_EXP, "Exp", 3, $1, $2, $3);
+    }
+  | Exp OR Exp {
+      $$ = create_AST_node(NODE_EXP, "Exp", 3, $1, $2, $3);
+    }
+  | Exp RELOP Exp {
+      $$ = create_AST_node(NODE_EXP, "Exp", 3, $1, $2, $3);
+    }
+  | Exp PLUS Exp {
+      $$ = create_AST_node(NODE_EXP, "Exp", 3, $1, $2, $3);
+    }
+  | Exp MINUS Exp {
+      $$ = create_AST_node(NODE_EXP, "Exp", 3, $1, $2, $3);
+    }
+  | Exp STAR Exp {
+      $$ = create_AST_node(NODE_EXP, "Exp", 3, $1, $2, $3);
+    }
+  | Exp DIV Exp {
+      $$ = create_AST_node(NODE_EXP, "Exp", 3, $1, $2, $3);
+    }
+  | LP Exp RP {
+      $$ = create_AST_node(NODE_EXP, "Exp", 3, $1, $2, $3);
+    }
+  | MINUS Exp %prec UMINUS {
+      $$ = create_AST_node(NODE_EXP, "Exp", 2, $1, $2);
+    }
+  | NOT Exp {
+      $$ = create_AST_node(NODE_EXP, "Exp", 2, $1, $2);
+    }
+  | ID LP Args RP {
+      $$ = create_AST_node(NODE_EXP, "Exp", 4, $1, $2, $3, $4);
+    }
+  | ID LP RP {
+      $$ = create_AST_node(NODE_EXP, "Exp", 3, $1, $2, $3);
+    }
+  | Exp LB Exp RB {
+      $$ = create_AST_node(NODE_EXP, "Exp", 4, $1, $2, $3, $4);
+    }
+  | Exp DOT ID {
+      $$ = create_AST_node(NODE_EXP, "Exp", 3, $1, $2, $3);
+    }
+  | ID {
+      $$ = create_AST_node(NODE_EXP, "Exp", 1, $1);
+    }
+  | INT {
+      $$ = create_AST_node(NODE_EXP, "Exp", 1, $1);
+    }
+  | FLOAT {
+      $$ = create_AST_node(NODE_EXP, "Exp", 1, $1);
+    }
   ;
 
 Args:
-    Exp COMMA Args
-  | Exp
+    Exp COMMA Args {
+      $$ = create_AST_node(NODE_ARGS, "Args", 3, $1, $2, $3);
+    }
+  | Exp {
+      $$ = create_AST_node(NODE_ARGS, "Args", 1, $1);
+    }
   ;
 
 
@@ -172,5 +290,6 @@ Args:
 
 /* 语法错误处理函数 */
 void yyerror(const char *s) {
-    printf("Error type B at Line %d: Missing \"%s\".\n", yylineno, s);
+    SYNTAX_ERROR++;
+    printf("Error type B at Line %d: %s.\n", yylineno, s);
 }
