@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# A helper bash script for auto-test
+
+CODE_DIR="Code"
+TEST_DIR="Test"
+
+echo "REBUILDING THE PROJECT..."
+cd $CODE_DIR || exit 1
+make clean
+make
+
+if [ ! -f "parser" ]; then
+    echo ">> 错误: 编译失败，未能在 $CODE_DIR 目录下生成 parser 可执行文件！"
+    exit 1
+fi
+
+echo "COMPILATION SUCCESSFUL! Starting tests..."
+
+echo "RUNNING TESTS..."
+cd ..
+
+for test_file in $TEST_DIR/*.cmm; do
+    echo "----------------------------------------"
+    echo "Testing: $test_file"
+    ./$CODE_DIR/parser "$test_file"
+done
