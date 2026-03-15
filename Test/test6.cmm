@@ -1,7 +1,27 @@
-int calc( {}
-
-int main() {
-    int ab,
-    int w;
-    while ((ab < w) && (w < ab) {}
+int foo() {
+    int a,i;
+    if (a > +) i = 1;
+}
+int bar() {
+    int a[100];
+    a[1+] = 5;
+    int b[1.5];
+}
+int foo2(int a) {
+    while (a > ) {
+        a = a+1;
+    }
+    if (a > 0) {
+        a = a+1;
+    } else (a < 0) {
+        a = ;
+    } else {
+        a;
+    }
+    while (a > ) {
+        a = a+1;
+    }
+}
+int bar2(int a) {
+    a = +;
 }
