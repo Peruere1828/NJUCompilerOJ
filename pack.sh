@@ -6,6 +6,7 @@
 # 请在这里修改为你的实际姓名和学号
 STUDENT_NAME="NAME"
 STUDENT_ID="ID"
+DOC_PATH="stage1.md"
 # ==========================================
 
 ZIP_NAME="${STUDENT_NAME}_${STUDENT_ID}.zip"
@@ -41,6 +42,15 @@ make clean
 
 # 5. 回到根目录
 cd ..
+
+echo ">> 正在从 $DOC_PATH 生成 report.pdf..."
+md2pdf ./doc/$DOC_PATH ./report.pdf
+
+# 检查生成是否成功
+if [ ! -f "report.pdf" ]; then
+    echo ">> 错误: 生成 report.pdf 失败！请检查 md2pdf 是否安装或 $DOC_PATH 是否存在。"
+    exit 1
+fi
 
 # 6. 打包所需文件（直接打包目标文件和文件夹，避免嵌套）
 echo ">> 正在生成压缩包..."
