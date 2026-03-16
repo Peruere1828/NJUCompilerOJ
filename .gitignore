@@ -25,3 +25,5 @@ syntax.output
 parser
 
 report.pdf
+
+mypack.sh

@@ -77,7 +77,7 @@ ExtDef:
       $$ = create_AST_node(NODE_EXTDEF, "ExtDef", 3, $1, $2, $3);
     }
   | error SEMI { $$ = NULL; }
-  | error RC { $$ = NULL; }
+  | error CompSt { $$ = NULL; }
   ;
 
 ExtDecList:
@@ -166,7 +166,7 @@ CompSt:
     LC DefList StmtList RC {
       $$ = create_AST_node(NODE_COMPST, "CompSt", 4, $1, $2, $3, $4);
     }
-  | error RC {
+  | LC error RC {
       $$ = NULL;
     }
   ;
@@ -209,6 +209,7 @@ Stmt:
   | error SEMI {
       $$ = NULL;
     }
+  | error CompSt { $$ = NULL; }
   ;
 
 DefList:
