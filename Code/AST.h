@@ -60,15 +60,25 @@ typedef enum {
   TOKEN_WHILE
 } NodeKind;
 
+typedef enum {
+  RELOP_EQ = '=' + '=',
+  RELOP_NEQ = '!' + '=',
+  RELOP_LEQ = '<' + '=',
+  RELOP_LT = '<',
+  RELOP_GEQ = '>' + '=',
+  RELOP_GT = '>',
+} RelopKind;
+
 // AST上的一个节点，根据kind区分是代表语法单元还是词法单元
 typedef struct ASTNode {
   NodeKind kind;
   char* name;
   int lineno;
   union {
-    unsigned long int_val;      // 针对 TOKEN_INT
-    float float_val;  // 针对 TOKEN_FLOAT
-    char* str_val;    // 针对 TOKEN_ID 和 TOKEN_TYPE
+    unsigned long int_val;  // 针对 TOKEN_INT
+    float float_val;        // 针对 TOKEN_FLOAT
+    char* str_val;          // 针对 TOKEN_ID 和 TOKEN_TYPE
+    RelopKind relop_val;    // 针对 RELOP
   } val;
 
   struct ASTNode** children;

@@ -1,0 +1,6 @@
+int main() {
+    int a = 100@;
+    float b = 20#;
+    int 123abc = 1;
+    float 99var = 1.0;
+}

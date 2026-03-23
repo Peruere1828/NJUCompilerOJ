@@ -76,8 +76,8 @@ ExtDef:
   | Specifier FunDec CompSt {
       $$ = create_AST_node(NODE_EXTDEF, "ExtDef", 3, $1, $2, $3);
     }
-  | error SEMI { $$ = NULL; }
-  | error CompSt { $$ = NULL; }
+  | error SEMI { $$ = NULL; yyerrok; }
+  | error CompSt { $$ = NULL; yyerrok; }
   ;
 
 ExtDecList:
@@ -105,9 +105,7 @@ StructSpecifier:
   | STRUCT Tag {
       $$ = create_AST_node(NODE_STRUCTSPECIFIER, "StructSpecifier", 2, $1, $2);
     }
-  | STRUCT OptTag LC error RC {
-      $$ = NULL;
-    }
+  | STRUCT OptTag LC error RC { $$ = NULL; yyerrok; }
   ;
 
 OptTag:
@@ -130,9 +128,7 @@ VarDec:
   | VarDec LB INT RB {
       $$ = create_AST_node(NODE_VARDEC, "VarDec", 4, $1, $2, $3, $4);
     }
-  | VarDec LB error RB {
-      $$ = NULL;
-    }
+  | VarDec LB error RB { $$ = NULL; yyerrok; }
   ;
 
 FunDec:
@@ -142,9 +138,7 @@ FunDec:
   | ID LP RP {
       $$ = create_AST_node(NODE_FUNDEC, "FunDec", 3, $1, $2, $3);
     }
-  | error RP {
-      $$ = NULL;
-    }
+  | error RP { $$ = NULL; yyerrok; }
   ;
 
 VarList:
@@ -166,9 +160,7 @@ CompSt:
     LC DefList StmtList RC {
       $$ = create_AST_node(NODE_COMPST, "CompSt", 4, $1, $2, $3, $4);
     }
-  | LC error RC {
-      $$ = NULL;
-    }
+  | LC error RC { $$ = NULL; yyerrok; }
   ;
 
 StmtList:
@@ -197,19 +189,11 @@ Stmt:
   | WHILE LP Exp RP Stmt {
       $$ = create_AST_node(NODE_STMT, "Stmt", 5, $1, $2, $3, $4, $5);
     }
-  | IF LP error RP Stmt %prec LOWER_THAN_ELSE {
-      $$ = NULL;
-    }
-  | IF LP error RP Stmt ELSE Stmt {
-      $$ = NULL;
-    }
-  | WHILE LP error RP Stmt {
-      $$ = NULL;
-    }
-  | error SEMI {
-      $$ = NULL;
-    }
-  | error CompSt { $$ = NULL; }
+  | IF LP error RP Stmt %prec LOWER_THAN_ELSE { $$ = NULL; yyerrok; }
+  | IF LP error RP Stmt ELSE Stmt { $$ = NULL; yyerrok; }
+  | WHILE LP error RP Stmt { $$ = NULL; yyerrok; }
+  | error SEMI { $$ = NULL; yyerrok; }
+  | error CompSt { $$ = NULL; yyerrok; }
   ;
 
 DefList:
@@ -223,9 +207,7 @@ Def:
     Specifier DecList SEMI {
       $$ = create_AST_node(NODE_DEF, "Def", 3, $1, $2, $3);
     }
-  | error SEMI {
-      $$ = NULL;
-    }
+  | error SEMI { $$ = NULL; yyerrok; }
   ;
 
 DecList:
@@ -301,15 +283,9 @@ Exp:
   | FLOAT {
       $$ = create_AST_node(NODE_EXP, "Exp", 1, $1);
     }
-  | LP error RP {
-      $$ = NULL; 
-    }
-  | ID LP error RP {
-      $$ = NULL;
-    }
-  | Exp LB error RB {
-      $$ = NULL;
-    }
+  | LP error RP { $$ = NULL; yyerrok; }
+  | ID LP error RP { $$ = NULL; yyerrok; }
+  | Exp LB error RB { $$ = NULL; yyerrok; }
   ;
 
 Args:

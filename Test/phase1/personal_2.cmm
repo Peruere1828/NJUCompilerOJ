@@ -1,0 +1,7 @@
+int main() {
+    int oct = 0123;
+    int hex = 0x4F;
+    float sci1 = 1.23E-5;
+    float sci2 = .678e+2;
+    float sci3 = 789.e1;
+}

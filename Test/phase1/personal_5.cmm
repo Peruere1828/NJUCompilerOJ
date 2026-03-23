@@ -1,0 +1,12 @@
+struct Point {
+    int x;
+    float y;
+};
+int main() {
+    struct Point p;
+    p.x = 10;
+    p.y = 20.5;
+    if (p.x > 0 && p.y < 30.0) {
+        return 1;
+    }
+}

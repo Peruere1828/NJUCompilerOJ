@@ -148,7 +148,16 @@ SINGLE_COMMENT  "//".*
 ";"             { CREATE_AND_RET(SEMI); }
 ","             { CREATE_AND_RET(COMMA); }
 "="             { CREATE_AND_RET(ASSIGNOP); }
-">"|"<"|">="|"<="|"=="|"!=" { CREATE_AND_RET(RELOP); }
+">"|"<"|">="|"<="|"=="|"!=" { 
+    yylval.node = create_token_node(TOKEN_RELOP, "RELOP", yylineno);
+    /* 把符号ASCII值视作int，以符号的和作为hash */
+    int op_hash = 0;
+    for (int i = 0; i < yyleng; i++) {
+        op_hash += (int)yytext[i];
+    }
+    yylval.node->val.relop_val = op_hash;
+    RET(RELOP);
+}
 "+"             { CREATE_AND_RET(PLUS); }
 "-"             { CREATE_AND_RET(MINUS); }
 "*"             { CREATE_AND_RET(STAR); }
