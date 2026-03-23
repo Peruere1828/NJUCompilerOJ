@@ -39,7 +39,7 @@ OCT_INT     0[0-7]+
 HEX_INT     0[xX][0-9a-fA-F]+
 
 NORMAL_FLOAT [0-9]+\.[0-9]+
-SCI_FLOAT    ([0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)[eE][+-]?[0-9]+
+SCI_FLOAT    ([0-9]+\.[0-9]*|\.[0-9]+)[eE][+-]?[0-9]+
 
 SINGLE_COMMENT  "//".*
 /* 用状态机实现跨行注释 */
@@ -65,14 +65,14 @@ SINGLE_COMMENT  "//".*
 
 {DEC_INT}       {
     yylval.node = create_token_node(TOKEN_INT, "INT", yylineno);
-    yylval.node->val.int_val = atoi(yytext);
+    yylval.node->val.int_val = (unsigned long)strtol(yytext, NULL, 10);
     RET(INT);
 }
 
 {OCT_INT}       {
 #ifdef STAGE_ONE_REQ_ONE
     yylval.node = create_token_node(TOKEN_INT, "INT", yylineno);
-    yylval.node->val.int_val = (int)strtol(yytext, NULL, 8);
+    yylval.node->val.int_val = (unsigned long)strtol(yytext, NULL, 8);
     RET(INT);
 #else
     yyless(1);
@@ -85,7 +85,7 @@ SINGLE_COMMENT  "//".*
 {HEX_INT}       {
 #ifdef STAGE_ONE_REQ_ONE
     yylval.node = create_token_node(TOKEN_INT, "INT", yylineno);
-    yylval.node->val.int_val = (int)strtol(yytext, NULL, 16);
+    yylval.node->val.int_val = (unsigned long)strtol(yytext, NULL, 16);
     RET(INT);
 #else
     yyless(1);

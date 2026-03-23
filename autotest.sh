@@ -3,7 +3,15 @@
 # A helper bash script for auto-test
 
 CODE_DIR="Code"
-TEST_DIR="Test"
+
+if [ "$1" == "p1" ]; then
+    TEST_DIR="Test/phase1"
+elif [ "$1" == "p2" ]; then
+    TEST_DIR="Test/phase2"
+else
+    echo "Usage: $0 p1|p2"
+    exit 1
+fi
 
 echo "REBUILDING THE PROJECT..."
 cd $CODE_DIR || exit 1

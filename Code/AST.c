@@ -7,11 +7,11 @@
 
 #include "config.h"
 
-char* strdup(const char * src_str) {
-    int len = strlen(src_str);
-    char* dst_str = (char*)malloc(len * sizeof(char));
-    strcpy(dst_str, src_str);
-    return dst_str;
+char* strdup(const char* src_str) {
+  int len = strlen(src_str);
+  char* dst_str = (char*)malloc(len * sizeof(char));
+  strcpy(dst_str, src_str);
+  return dst_str;
 }
 
 ASTNode* create_AST_node(NodeKind kind, const char* name, int child_count,
@@ -70,7 +70,7 @@ void print_AST(ASTNode* node, int depth) {
     if (node->kind == TOKEN_ID || node->kind == TOKEN_TYPE) {
       printf(": %s", node->val.str_val);
     } else if (node->kind == TOKEN_INT) {
-      printf(": %d", node->val.int_val);
+      printf(": %lu", node->val.int_val);
     } else if (node->kind == TOKEN_FLOAT) {
       printf(": %f", node->val.float_val);
     }

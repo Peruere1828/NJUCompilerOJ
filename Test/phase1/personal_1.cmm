@@ -1,0 +1,7 @@
+int main() {
+    int testing_variable_definition;
+    int a = 100;
+    float b = 3.14;
+    int c = 0;
+    int d = 2147483648;
+}

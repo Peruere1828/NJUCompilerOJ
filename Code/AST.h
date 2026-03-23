@@ -66,7 +66,7 @@ typedef struct ASTNode {
   char* name;
   int lineno;
   union {
-    int int_val;      // 针对 TOKEN_INT
+    unsigned long int_val;      // 针对 TOKEN_INT
     float float_val;  // 针对 TOKEN_FLOAT
     char* str_val;    // 针对 TOKEN_ID 和 TOKEN_TYPE
   } val;
@@ -76,7 +76,7 @@ typedef struct ASTNode {
 } ASTNode;
 
 // 将字符串复制到新建立的空间
-char* strdup(const char * src_str);
+char* strdup(const char* src_str);
 
 // 创建一个语法单元的节点
 ASTNode* create_AST_node(NodeKind kind, const char* name, int child_count, ...);

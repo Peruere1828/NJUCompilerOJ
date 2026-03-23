@@ -3,4 +3,6 @@ int main()
     int i = 0123;
     int j = 0x3F;
     int k = 0x3f;
+    int l = 0237;
+    int m = 0xFF32;
 }
