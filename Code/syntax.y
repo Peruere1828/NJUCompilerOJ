@@ -9,6 +9,7 @@
 int yylex();
 void yyerror(const char *s);
 extern int yylineno;
+extern int error_in_line;
 
 ASTNode* root;  // 用于存储语法树的根节点
 
@@ -307,6 +308,9 @@ Args:
 
 /* 语法错误处理函数 */
 void yyerror(const char *s) {
+    error_in_line++;
     SYNTAX_ERROR++;
-    printf("Error type B at Line %d: %s.\n", yylineno, s);
+    if (error_in_line == 1) {
+      printf("Error type B at Line %d: %s.\n", yylineno, s);
+    }
 }
