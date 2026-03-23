@@ -26,6 +26,9 @@
     } while(0)
 
 int LEX_ERROR = 0; // lexer 遇到的错误字符数
+#ifdef STAGE_ONE_REQ_THREE 
+int comment_start_line = 0;
+#endif
 
 static void handle_error(const char *);
 %}
@@ -133,6 +136,7 @@ SINGLE_COMMENT  "//".*
 
 "/*"                {
 #ifdef STAGE_ONE_REQ_THREE 
+    comment_start_line = yylineno;
     BEGIN(BLOCK_COMMENT);
 #else
     yyless(1);
@@ -180,3 +184,12 @@ static void handle_error(const char *error_str) {
     LEX_ERROR++;
     printf("Error type A at Line %d: Mysterious character \"%s\".\n", yylineno, error_str);
 }
+
+#ifdef STAGE_ONE_REQ_THREE
+void check_unclosed_comment() {
+    if (YY_START == BLOCK_COMMENT) {
+        LEX_ERROR++;
+        printf("Error type A at Line %d:  Unclosed comment\n", comment_start_line);
+    }
+}
+#endif

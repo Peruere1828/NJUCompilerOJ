@@ -14,6 +14,10 @@ extern int SYNTAX_ERROR;
 extern int yydebug;
 extern ASTNode* root;
 
+#ifdef STAGE_ONE_REQ_THREE
+extern void check_unclosed_comment();
+#endif
+
 int main(int argc, char** argv) {
   if (argc <= 1) {
     printf("Usage: %s <filename>\n", argv[0]);
@@ -38,6 +42,10 @@ int main(int argc, char** argv) {
 #endif
 
   int result = yyparse();
+
+#ifdef STAGE_ONE_REQ_THREE
+  check_unclosed_comment();
+#endif
 
   if (LEX_ERROR == 0 && SYNTAX_ERROR == 0 && result == 0) {
     // printf("Parsing SUCCESS!\n");

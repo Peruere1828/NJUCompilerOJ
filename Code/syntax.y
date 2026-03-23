@@ -78,6 +78,7 @@ ExtDef:
     }
   | error SEMI { $$ = NULL; yyerrok; }
   | error CompSt { $$ = NULL; yyerrok; }
+  | SEMI { $$ = NULL; }
   ;
 
 ExtDecList:
@@ -207,6 +208,7 @@ Def:
     Specifier DecList SEMI {
       $$ = create_AST_node(NODE_DEF, "Def", 3, $1, $2, $3);
     }
+  | Specifier error SEMI { $$ = NULL; yyerrok; }
   | error SEMI { $$ = NULL; yyerrok; }
   ;
 
