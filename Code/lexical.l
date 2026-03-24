@@ -79,7 +79,7 @@ SINGLE_COMMENT  "//".*
     yylval.node->val.int_val = (unsigned long)strtol(yytext, NULL, 8);
     RET(INT);
 #else
-    yyless(1);
+    handle_error(yytext);
     yylval.node = create_token_node(TOKEN_INT, "INT", yylineno);
     yylval.node->val.int_val = 0;
     RET(INT);
@@ -92,7 +92,7 @@ SINGLE_COMMENT  "//".*
     yylval.node->val.int_val = (unsigned long)strtol(yytext, NULL, 16);
     RET(INT);
 #else
-    yyless(1);
+    handle_error(yytext);
     yylval.node = create_token_node(TOKEN_INT, "INT", yylineno);
     yylval.node->val.int_val = 0;
     RET(INT);
@@ -124,6 +124,22 @@ SINGLE_COMMENT  "//".*
     }
     RET(FLOAT);
 #endif
+}
+
+0[0-9a-zA-Z_]+ {
+    /* 拦截非法八进制 */
+    handle_error(yytext);
+    yylval.node = create_token_node(TOKEN_INT, "INT", yylineno);
+    yylval.node->val.int_val = 0;
+    RET(INT);
+}
+
+0[xX][0-9a-zA-Z_]+ {
+    /* 拦截非法十六进制 */
+    handle_error(yytext);
+    yylval.node = create_token_node(TOKEN_INT, "INT", yylineno);
+    yylval.node->val.int_val = 0;
+    RET(INT);
 }
 
 {SINGLE_COMMENT}    {
