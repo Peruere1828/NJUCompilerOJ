@@ -194,6 +194,9 @@ Stmt:
   | IF LP error RP Stmt %prec LOWER_THAN_ELSE { $$ = NULL; yyerrok; }
   | IF LP error RP Stmt ELSE Stmt { $$ = NULL; yyerrok; }
   | WHILE LP error RP Stmt { $$ = NULL; yyerrok; }
+  | IF LP error CompSt %prec LOWER_THAN_ELSE { $$ = NULL; yyerrok; }
+  | IF LP error CompSt ELSE Stmt { $$ = NULL; yyerrok; }
+  | WHILE LP error CompSt { $$ = NULL; yyerrok; }
   | error SEMI { $$ = NULL; yyerrok; }
   | error CompSt { $$ = NULL; yyerrok; }
   ;
@@ -286,9 +289,6 @@ Exp:
   | FLOAT {
       $$ = create_AST_node(NODE_EXP, "Exp", 1, $1);
     }
-  | LP error RP { $$ = NULL; yyerrok; }
-  | ID LP error RP { $$ = NULL; yyerrok; }
-  | Exp LB error RB { $$ = NULL; yyerrok; }
   ;
 
 Args:

@@ -146,8 +146,7 @@ SINGLE_COMMENT  "//".*
 #ifdef STAGE_ONE_REQ_THREE 
     /* 忽略单行注释 */
 #else
-    yyless(1);
-    CREATE_AND_RET(DIV);
+    handle_error(yytext);
 #endif
 }
 

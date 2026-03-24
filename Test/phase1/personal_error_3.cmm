@@ -1,0 +1,9 @@
+int change(int n) {
+  while (j < (n) {
+    j = j + 1;  
+  }
+  return n;
+}
+int main() {
+  struct A { int a; };
+}
