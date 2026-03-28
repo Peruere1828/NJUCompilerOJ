@@ -74,6 +74,11 @@ void print_AST(ASTNode* node, int depth) {
     } else if (node->kind == TOKEN_FLOAT) {
       printf(": %f", node->val.float_val);
     }
+#ifdef DEBUG
+    else if (node->kind == TOKEN_RELOP) {
+      printf(": %d", node->val.relop_val);
+    }
+#endif
     printf("\n");
   }
 
