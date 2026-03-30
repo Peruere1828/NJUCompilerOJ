@@ -85,9 +85,6 @@ typedef struct ASTNode {
   int child_count;
 } ASTNode;
 
-// 将字符串复制到新建立的空间
-char* strdup(const char* src_str);
-
 // 创建一个语法单元的节点
 ASTNode* create_AST_node(NodeKind kind, const char* name, int child_count, ...);
 

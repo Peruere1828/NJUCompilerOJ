@@ -3,16 +3,9 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
+#include "common.h"
 #include "config.h"
-
-char* strdup(const char* src_str) {
-  int len = strlen(src_str);
-  char* dst_str = (char*)malloc(len * sizeof(char));
-  strcpy(dst_str, src_str);
-  return dst_str;
-}
 
 ASTNode* create_AST_node(NodeKind kind, const char* name, int child_count,
                          ...) {
