@@ -7,6 +7,8 @@
 #include "common.h"
 #include "config.h"
 
+ASTNode* root = NULL;
+
 ASTNode* create_AST_node(NodeKind kind, const char* name, int child_count,
                          ...) {
   ASTNode* node = (ASTNode*)malloc(sizeof(ASTNode));

@@ -11,7 +11,7 @@ void yyerror(const char *s);
 extern int yylineno;
 extern int error_in_line;
 
-ASTNode* root;  // 用于存储语法树的根节点
+extern ASTNode* root;
 
 int SYNTAX_ERROR = 0; // 语法错误计数器
 %}

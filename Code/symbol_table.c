@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const int HASH_TABLE_SIZE = 0x3fff;
+#define HASH_TABLE_SIZE 0x3fff
 
 unsigned int gen_hash(const char* name) {
   unsigned int val = 0, i;
