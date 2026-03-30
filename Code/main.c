@@ -47,12 +47,14 @@ int main(int argc, char** argv) {
   check_unclosed_comment();
 #endif
 
+#ifdef STAGE_ONE
   if (LEX_ERROR == 0 && SYNTAX_ERROR == 0 && result == 0) {
     // printf("Parsing SUCCESS!\n");
     print_AST(root, 0);
   } else {
     // printf("Parsing FAILED\n");
   }
+#endif
   fclose(f);
   return 0;
 }
