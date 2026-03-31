@@ -4,8 +4,8 @@
 #include <string.h>
 
 char* strdup(const char* src_str) {
-  int len = strlen(src_str);
+  int len = strlen(src_str) + 1;
   char* dst_str = (char*)malloc(len * sizeof(char));
-  strcpy(dst_str, src_str);
+  memcpy(dst_str, src_str, len);
   return dst_str;
 }
