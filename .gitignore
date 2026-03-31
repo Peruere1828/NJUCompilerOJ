@@ -27,3 +27,5 @@ parser
 report.pdf
 
 mypack.sh
+
+*.pdf

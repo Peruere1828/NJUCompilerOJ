@@ -15,3 +15,17 @@ docker build --network host -t compiler-oj-env .
 docker run -id --name my-lab --network host -v ~/compiler-oj/lab_my:/workspace compiler-oj-env /bin/bash
 docker run -d --name teammate-lab --network host -v ~/compiler-oj/lab_teammate:/workspace compiler-oj-env /usr/sbin/sshd -D -p 2345
 ```
+
+注意：`Dockerfile` 中额外下载了 `PrinceXML`，用于在 VSCode 中用 Markdown 相关插件导出 pdf。如果没有需要可以删去相关命令。
+
+## 额外脚本提供
+
+我提供了 `pack.sh` 和 `autotest.sh` 两个脚本，运行前需要 `chmod +x`。
+
+`pack.sh` 的作用是打包提交文件。需要注意的是，使用前需要**手动**导出提交报告，放在 `doc` 目录下，同时需要正确设置 `pack.sh` 开头的若干变量，以保证成功打包。
+
+`autotest.sh` 会自动构建代码，并且运行 `Test` 目录下的测试。注意并不会检验测试的正确性。
+
+## 更多测试样例
+
+可以参考[我 fork 的测试用例仓库](https://github.com/Peruere1828/nju-compiler-test)。

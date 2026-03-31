@@ -6,7 +6,7 @@
 # 请在这里修改为你的实际姓名和学号
 STUDENT_NAME="NAME"
 STUDENT_ID="ID"
-DOC_PATH="stage1.md"
+REPORT_PDF_NAME="stage1.pdf"
 # ==========================================
 
 ZIP_NAME="${STUDENT_NAME}_${STUDENT_ID}.zip"
@@ -43,16 +43,20 @@ make clean
 # 5. 回到根目录
 cd ..
 
-echo ">> 正在从 $DOC_PATH 生成 report.pdf..."
-md2pdf ./doc/$DOC_PATH ./report.pdf
+# 6. 将报告拷贝到根目录
+echo ">> 正在准备实验报告 (report.pdf)..."
+SOURCE_PDF="./doc/$REPORT_PDF_NAME"
 
-# 检查生成是否成功
-if [ ! -f "report.pdf" ]; then
-    echo ">> 错误: 生成 report.pdf 失败！请检查 md2pdf 是否安装或 $DOC_PATH 是否存在。"
+if [ -f "$SOURCE_PDF" ]; then
+    cp "$SOURCE_PDF" ./report.pdf
+    echo ">> 成功：已将 $SOURCE_PDF 拷贝为根目录下的 report.pdf"
+else
+    echo ">> 错误: 找不到报告源文件 $SOURCE_PDF ！"
+    echo ">> 请确保你已手动生成 PDF 并存放在 doc 目录下，且文件名与脚本中配置的一致。"
     exit 1
 fi
 
-# 6. 打包所需文件（直接打包目标文件和文件夹，避免嵌套）
+# 7. 打包所需文件（直接打包目标文件和文件夹，避免嵌套）
 echo ">> 正在生成压缩包..."
 
 # 如果之前已经有同名压缩包，先将其删除

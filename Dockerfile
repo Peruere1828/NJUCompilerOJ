@@ -36,10 +36,9 @@ RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 100 \
     && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-7 100 \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 100
 
-RUN pip3 install --no-cache-dir \
-    "weasyprint<53" \
-    "pydyf<0.2.0" \
-    md2pdf
+RUN wget https://www.princexml.com/download/prince_16.2-1_ubuntu20.04_amd64.deb && \
+    apt update && apt install -y ./prince_16.2-1_ubuntu20.04_amd64.deb && \
+    rm prince_16.2-1_ubuntu20.04_amd64.deb
 
 RUN mkdir -p /var/run/sshd
 RUN echo 'root:compiler123' | chpasswd
