@@ -77,6 +77,14 @@ ExtDef:
   | Specifier FunDec CompSt {
       $$ = create_AST_node(NODE_EXTDEF, "ExtDef", 3, $1, $2, $3);
     }
+  | Specifier FunDec SEMI {
+    #ifdef STAGE_TWO_REQ_ONE
+      $$ = create_AST_node(NODE_EXTDEF, "ExtDef", 3, $1, $2, $3);
+    #else
+      $$ = NULL;
+      yyerror("Function declaration is prohibited");
+    #endif
+    }
   | error SEMI { $$ = NULL; yyerrok; }
   | error CompSt { $$ = NULL; yyerrok; }
   | SEMI { $$ = NULL; }
@@ -205,7 +213,7 @@ DefList:
     Def DefList {
       $$ = create_AST_node(NODE_DEFLIST, "DefList", 2, $1, $2);
     }
-  | /* empty */ { $$ = NULL;}
+  | /* empty */ { $$ = NULL; }
   ;
 
 Def:
