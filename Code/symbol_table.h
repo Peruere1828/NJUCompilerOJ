@@ -16,6 +16,7 @@ typedef struct SymbolNode {
 } SymbolNode;
 
 typedef struct StackNode {
+  int depth;  // 当不开启嵌套栈时，depth始终为0；当开启嵌套栈时，depth表示当前作用域的深度
   struct StackNode* nxt;
   SymbolNode* symbol_head;
 } StackNode;

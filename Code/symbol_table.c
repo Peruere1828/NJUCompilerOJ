@@ -22,6 +22,7 @@ int insert_symbol(const char* name, const Type* type) {
   const unsigned int ind = gen_hash(name);
   assert(scope_stack_top != NULL);
 #ifndef STAGE_TWO_REQ_TWO
+  // 虽然下面的循环在不开启嵌套栈时也能正确地检查当前作用域，但为了效率起见，直接遍历hash表的链表就行了
   SymbolNode* cur = hash_table[ind];
   while (cur != NULL) {
     if (strcmp(cur->name, name) == 0) {
@@ -41,6 +42,7 @@ int insert_symbol(const char* name, const Type* type) {
   SymbolNode* new_node = (SymbolNode*)malloc(sizeof(SymbolNode));
   new_node->name = name;
   new_node->type = type;
+  new_node->depth = scope_stack_top->depth;
 
   new_node->hash_nxt = hash_table[ind];
   hash_table[ind] = new_node;
@@ -63,10 +65,20 @@ Type* lookup_symbol(const char* name) {
 }
 
 void enter_scope() {
+#ifdef STAGE_TWO_REQ_TWO
   StackNode* new_scope = (StackNode*)malloc(sizeof(StackNode));
+  new_scope->depth = (scope_stack_top == NULL ? 0 : scope_stack_top->depth + 1);
   new_scope->nxt = scope_stack_top;
   new_scope->symbol_head = NULL;
   scope_stack_top = new_scope;
+#else
+  if (scope_stack_top == NULL) {
+    scope_stack_top = (StackNode*)malloc(sizeof(StackNode));
+    scope_stack_top->depth = 0;
+    scope_stack_top->nxt = NULL;
+    scope_stack_top->symbol_head = NULL;
+  }
+#endif
 }
 
 void exit_scope() {

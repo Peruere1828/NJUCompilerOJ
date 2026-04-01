@@ -13,6 +13,7 @@ struct FieldList {
   char* name;      // 字段名称
   Type* type;      // 字段类型
   FieldList* nxt;  // 指向下一个字段的指针
+  int lineno;      // 字段名所在行号
 };
 
 typedef enum { TYPE_BASIC, TYPE_ARRAY, TYPE_STRUCTURE, TYPE_FUNCTION } TypeKind;
