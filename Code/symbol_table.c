@@ -18,7 +18,7 @@ unsigned int gen_hash(const char* name) {
 StackNode* scope_stack_top = NULL;
 SymbolNode* hash_table[HASH_TABLE_SIZE];
 
-int insert_symbol(const char* name, const Type* type) {
+int insert_symbol(const char* name, const Type* type, const int lineno) {
   const unsigned int ind = gen_hash(name);
   assert(scope_stack_top != NULL);
 #ifndef STAGE_TWO_REQ_TWO
@@ -43,6 +43,7 @@ int insert_symbol(const char* name, const Type* type) {
   new_node->name = name;
   new_node->type = type;
   new_node->depth = scope_stack_top->depth;
+  new_node->lineno = lineno;
 
   new_node->hash_nxt = hash_table[ind];
   hash_table[ind] = new_node;

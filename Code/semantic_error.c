@@ -2,8 +2,11 @@
 
 #include <stdio.h>
 
+int SEMANTIC_ERROR = 0;
+
 void print_semantic_error(SemanticErrorType err_type, int line_num,
                           const char* name) {
+  SEMANTIC_ERROR++;
   switch (err_type) {
     case ERR_UNDEFINED_VARIABLE:
       printf("Error type %d at Line %d: Undefined variable \"%s\".\n", err_type,

@@ -10,6 +10,7 @@ typedef struct SymbolNode {
   const char* name;
   const Type* type;
   int depth;
+  int lineno;
 
   struct SymbolNode* scope_nxt;
   struct SymbolNode* hash_nxt;  // 开链法的下一个hash相同的符号
@@ -25,7 +26,7 @@ typedef struct StackNode {
 extern StackNode* scope_stack_top;
 extern SymbolNode* hash_table[];
 
-int insert_symbol(const char* name, const Type* type);
+int insert_symbol(const char* name, const Type* type, const int lineno);
 Type* lookup_symbol(const char* name);
 
 void enter_scope();
