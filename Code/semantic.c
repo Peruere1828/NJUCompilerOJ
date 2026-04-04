@@ -406,8 +406,6 @@ void visit_CompSt(ASTNode* node, Type* return_type) {
     free(def_list);
     def_list = next;
   }
-  /// TODO:
-  /// 处理StmtList，同时需要检查返回值是否正确；Compst可能还有其它部分没有写完
   visit_StmtList(node->children[2], return_type);
 }
 
@@ -420,7 +418,6 @@ void visit_StmtList(ASTNode* node, Type* return_type) {
 
 void visit_Stmt(ASTNode* node, Type* return_type) {
   if (node == NULL) return;
-  /// TODO: 处理各类语句
   if (node->children[0]->kind == NODE_EXP) {
     // Stmt: Exp SEMI
     visit_Exp(node->children[0]);
@@ -502,7 +499,7 @@ FieldList* visit_Dec(ASTNode* node, Type* base_type) {
     free(var_dec);
     return NULL;
   }
-  // FEAT: 假如Exp出错，仅移除Exp，不影响VarDec部分
+  /// FEAT: 假如Exp出错，仅移除Exp，不影响VarDec部分
   if (node->child_count == 3) {
     // Dec: VarDec ASSIGNOP Exp
     Type* exp_type = visit_Exp(node->children[2]);
@@ -515,7 +512,7 @@ FieldList* visit_Dec(ASTNode* node, Type* base_type) {
   return var_dec;
 }
 
-/// TODO: 考虑Exp报错之后，上层会拿到null，但就不再报错
+/// FEAT: 考虑Exp报错之后，上层会拿到null，但就不再报错
 
 #ifdef STAGE_TWO_REQ_ONE
 #define HASH_TABLE_SIZE 0x3fff
