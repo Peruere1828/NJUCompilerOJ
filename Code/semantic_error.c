@@ -31,8 +31,8 @@ void print_semantic_error(SemanticErrorType err_type, int line_num,
              err_type, line_num);
       break;
     case ERR_LVALUE_REQUIRED:
-      printf("Error type %d at Line %d: Invalid lvalue in assignment.\n",
-             err_type, line_num);
+      printf("Error type %d at Line %d: Invalid lvalue \"%s\" in assignment.\n",
+             err_type, line_num, name);
       break;
     case ERR_TYPE_MISMATCH_OPERATOR:
       printf("Error type %d at Line %d: Operand type mismatch.\n", err_type,

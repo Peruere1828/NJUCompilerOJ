@@ -38,6 +38,9 @@ Type* visit_Exp(ASTNode* node);
 void scan_function_declared_but_not_defined();
 #endif
 
+// 当前解析的函数名称，用于语义报错
+static const char* current_parsing_function = NULL;
+
 // 语义分析入口
 void semantic_analysis(ASTNode* root) {
   if (root == NULL) return;
@@ -163,6 +166,7 @@ void visit_ExtDef(ASTNode* node) {
     if (is_definition) {
       // ExtDef: Specifier FunDec CompSt
       enter_scope();
+      current_parsing_function = fun_dec->name;
       FieldList* arg = fun_dec->type->u.function.args;
       while (arg != NULL) {
         // 处理FunDec的VarList的时候去掉了重复的参数
@@ -174,6 +178,7 @@ void visit_ExtDef(ASTNode* node) {
         arg = arg->nxt;
       }
       visit_CompSt(node->children[2], base_type);
+      current_parsing_function = NULL;
       exit_scope();
     }
     free(fun_dec);
@@ -430,8 +435,9 @@ void visit_Stmt(ASTNode* node, Type* return_type) {
     // Stmt: RETURN Exp SEMI
     Type* exp_type = visit_Exp(node->children[1]);
     if (exp_type && !compare_two_types(exp_type, return_type)) {
-      print_semantic_error(ERR_RETURN_TYPE_MISMATCH, node->children[1]->lineno,
-                           node->children[1]->name);
+      print_semantic_error(
+          ERR_RETURN_TYPE_MISMATCH, node->children[1]->lineno,
+          current_parsing_function ? current_parsing_function : "unknown");
     }
   } else if (node->children[0]->kind == TOKEN_IF) {
     // Stmt: IF LP Exp RP Stmt

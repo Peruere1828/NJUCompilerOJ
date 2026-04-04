@@ -23,6 +23,62 @@ static int is_lvalue(ASTNode* exp_node) {
   return 0;
 }
 
+// 定义一个静态缓冲区，足够容纳绝大多数报错表达式
+static char exp_name_buf[1024];
+
+static void build_exp_str(ASTNode* node, char* buf, size_t max_len);
+
+static void build_exp_str(ASTNode* node, char* buf, size_t max_len) {
+  if (node == NULL || strlen(buf) >= max_len - 1) return;
+
+  if (node->child_count == 1) {
+    ASTNode* child = node->children[0];
+    if (child->kind == TOKEN_ID) {
+      strncat(buf, child->val.str_val, max_len - strlen(buf) - 1);
+    } else if (child->kind == TOKEN_INT) {
+      char temp[32];
+      snprintf(temp, sizeof(temp), "%lu", child->val.int_val);
+      strncat(buf, temp, max_len - strlen(buf) - 1);
+    } else if (child->kind == TOKEN_FLOAT) {
+      strncat(buf, "<float>", max_len - strlen(buf) - 1);
+    }
+  } else if (node->children[0]->kind == TOKEN_LP) {
+    // 处理括号: LP Exp RP
+    strncat(buf, "(", max_len - strlen(buf) - 1);
+    build_exp_str(node->children[1], buf, max_len);
+    strncat(buf, ")", max_len - strlen(buf) - 1);
+  } else if (node->children[1]->kind == TOKEN_DOT) {
+    // 处理结构体域访问: Exp DOT ID
+    build_exp_str(node->children[0], buf, max_len);
+    strncat(buf, ".", max_len - strlen(buf) - 1);
+    strncat(buf, node->children[2]->val.str_val, max_len - strlen(buf) - 1);
+  } else if (node->children[1]->kind == TOKEN_LB) {
+    // 处理数组访问: Exp LB Exp RB
+    build_exp_str(node->children[0], buf, max_len);
+    strncat(buf, "[", max_len - strlen(buf) - 1);
+    build_exp_str(node->children[2], buf, max_len);
+    strncat(buf, "]", max_len - strlen(buf) - 1);
+  } else if (node->children[0]->kind == TOKEN_ID) {
+    // 处理函数调用: ID LP ... RP
+    strncat(buf, node->children[0]->val.str_val, max_len - strlen(buf) - 1);
+    strncat(buf, "(...)", max_len - strlen(buf) - 1);  //忽略函数参数
+  } else {
+    // 对于其他复杂的算术/逻辑运算，退化为泛型标识
+    strncat(buf, "<expr>", max_len - strlen(buf) - 1);
+  }
+}
+
+// 供外部调用的包装函数
+static const char* get_exp_name(ASTNode* exp_node) {
+  exp_name_buf[0] = '\0';
+  build_exp_str(exp_node, exp_name_buf, sizeof(exp_name_buf));
+
+  if (exp_name_buf[0] == '\0') {
+    return "expression";
+  }
+  return exp_name_buf;
+}
+
 FieldList* visit_Args(ASTNode* node);
 
 Type* visit_Exp(ASTNode* node) {
@@ -80,7 +136,8 @@ Type* visit_Exp(ASTNode* node) {
     if (op_kind == TOKEN_ASSIGNOP) {
       // Exp: Exp ASSIGNOP Exp
       if (!is_lvalue(node->children[0])) {
-        print_semantic_error(ERR_LVALUE_REQUIRED, op_lineno, NULL);
+        print_semantic_error(ERR_LVALUE_REQUIRED, node->children[0]->lineno,
+                             get_exp_name(node->children[0]));
         return NULL;
       }
       if (!compare_two_types(tp1, tp2)) {
@@ -180,11 +237,12 @@ Type* visit_Exp(ASTNode* node) {
   } /* Exp: Exp LB Exp RB | Exp DOT ID */
   else if (node->children[1]->kind == TOKEN_LB) {
     // Exp: Exp LB Exp RB
-    Type* arr_type = visit_Exp(node->children[0]);
-    if(arr_type == NULL) return NULL;
+    ASTNode* exp_node = node->children[0];
+    Type* arr_type = visit_Exp(exp_node);
+    if (arr_type == NULL) return NULL;
     if (arr_type->kind != TYPE_ARRAY) {
-      print_semantic_error(ERR_ARRAY_ACCESS_ON_NON_ARRAY,
-                           node->children[0]->lineno, "Exp");
+      print_semantic_error(ERR_ARRAY_ACCESS_ON_NON_ARRAY, exp_node->lineno,
+                           get_exp_name(exp_node));
       return NULL;
     }
     Type* ind_type = visit_Exp(node->children[2]);
@@ -197,11 +255,12 @@ Type* visit_Exp(ASTNode* node) {
     return arr_type->u.array.element_type;
   } else {
     // Exp: Exp DOT ID
-    Type* struct_type = visit_Exp(node->children[0]);
+    ASTNode* exp_node = node->children[0];
+    Type* struct_type = visit_Exp(exp_node);
     if (struct_type == NULL) return NULL;
     if (struct_type->kind != TYPE_STRUCTURE) {
-      print_semantic_error(ERR_DOT_OPERATOR_ON_NON_STRUCT,
-                           node->children[0]->lineno, "Exp");
+      print_semantic_error(ERR_DOT_OPERATOR_ON_NON_STRUCT, exp_node->lineno,
+                           get_exp_name(exp_node));
       return NULL;
     }
     const char* name = node->children[2]->val.str_val;
