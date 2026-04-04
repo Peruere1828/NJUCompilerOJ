@@ -98,12 +98,18 @@ Type* visit_Exp(ASTNode* node) {
       print_semantic_error(ERR_TYPE_MISMATCH_OPERATOR, rson->lineno, NULL);
       return NULL;
     }
-    
+
     switch (node->children[1]->kind) {
       case TOKEN_AND:
       case TOKEN_OR:
-      case TOKEN_RELOP:
         if (tp1->u.basic != BASIC_INT || tp2->u.basic != BASIC_INT) {
+          print_semantic_error(ERR_TYPE_MISMATCH_OPERATOR, op_lineno, NULL);
+          return NULL;
+        }
+        return &type_int;
+        break;
+      case TOKEN_RELOP:
+        if (!compare_two_types(tp1, tp2)) {
           print_semantic_error(ERR_TYPE_MISMATCH_OPERATOR, op_lineno, NULL);
           return NULL;
         }
@@ -175,7 +181,8 @@ Type* visit_Exp(ASTNode* node) {
   else if (node->children[1]->kind == TOKEN_LB) {
     // Exp: Exp LB Exp RB
     Type* arr_type = visit_Exp(node->children[0]);
-    if (arr_type == NULL || arr_type->kind != TYPE_ARRAY) {
+    if(arr_type == NULL) return NULL;
+    if (arr_type->kind != TYPE_ARRAY) {
       print_semantic_error(ERR_ARRAY_ACCESS_ON_NON_ARRAY,
                            node->children[0]->lineno, "Exp");
       return NULL;
@@ -185,7 +192,7 @@ Type* visit_Exp(ASTNode* node) {
     if (!compare_two_types(ind_type, &type_int)) {
       print_semantic_error(ERR_NON_INTEGER_ARRAY_INDEX,
                            node->children[2]->lineno, NULL);
-      return NULL;
+      // FEAT: 当下标类型出错，仍然返回arr对应的type
     }
     return arr_type->u.array.element_type;
   } else {

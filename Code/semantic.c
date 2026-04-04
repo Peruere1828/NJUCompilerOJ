@@ -34,11 +34,18 @@ FieldList* visit_Dec(ASTNode* node, Type* base_type);
 // visit_Exp定义在semantic_exp.c中
 Type* visit_Exp(ASTNode* node);
 
+#ifdef STAGE_TWO_REQ_ONE
+void scan_function_declared_but_not_defined();
+#endif
+
 // 语义分析入口
 void semantic_analysis(ASTNode* root) {
   if (root == NULL) return;
   enter_scope();  // 全局作用域
   visit_Program(root);
+#ifdef STAGE_TWO_REQ_ONE
+  scan_function_declared_but_not_defined();
+#endif
   exit_scope();
 }
 
@@ -130,17 +137,22 @@ void visit_ExtDef(ASTNode* node) {
     }
 #else
     if (symbol_type != NULL) {
-      if (!compare_two_types(symbol_type, fun_dec->type)) {
-        print_semantic_error(ERR_CONFLICTING_FUNCTION_DECLARATIONS,
-                             node->children[1]->lineno, fun_dec->name);
-      } else {
+      if (symbol_type->u.function.is_defined) {
         if (is_definition) {
-          if (symbol_type->u.function.is_defined) {
-            print_semantic_error(ERR_REDEFINED_FUNCTION,
-                                 node->children[1]->lineno, fun_dec->name);
-          } else {
-            symbol_type->u.function.is_defined = 1;
-          }
+          print_semantic_error(ERR_REDEFINED_FUNCTION,
+                               node->children[1]->lineno, fun_dec->name);
+        } else if (!compare_two_types(symbol_type, fun_dec->type)) {
+          print_semantic_error(ERR_CONFLICTING_FUNCTION_DECLARATIONS,
+                               node->children[1]->lineno, fun_dec->name);
+        }
+      } else {
+        if (!compare_two_types(symbol_type, fun_dec->type)) {
+          print_semantic_error(ERR_CONFLICTING_FUNCTION_DECLARATIONS,
+                               node->children[1]->lineno, fun_dec->name);
+        } else {
+          symbol_type->u.function.is_defined = is_definition;
+          // fun_dec->type->u.function.is_defined = is_definition;
+          // insert_symbol(fun_dec->name, fun_dec->type, fun_dec->lineno);
         }
       }
     } else {
@@ -153,8 +165,12 @@ void visit_ExtDef(ASTNode* node) {
       enter_scope();
       FieldList* arg = fun_dec->type->u.function.args;
       while (arg != NULL) {
-        // 这里应当成功，因为处理FunDec的VarList的时候去掉了重复的参数
-        insert_symbol(arg->name, arg->type, arg->lineno);
+        // 处理FunDec的VarList的时候去掉了重复的参数
+        // 但是不保证name跟某个type重名，所以仍然要判断
+        if (!insert_symbol(arg->name, arg->type, arg->lineno)) {
+          print_semantic_error(ERR_REDEFINED_VARIABLE_OR_STRUCT_NAME,
+                               arg->lineno, arg->name);
+        }
         arg = arg->nxt;
       }
       visit_CompSt(node->children[2], base_type);
@@ -166,7 +182,7 @@ void visit_ExtDef(ASTNode* node) {
 
 // 全局变量定义列表
 void visit_ExtDecList(ASTNode* node, Type* base_type) {
-  if (node == NULL) return;
+  if (node == NULL || base_type == NULL) return;
   // ExtDecList: VarDec | VarDec COMMA ExtDecList
   FieldList* var_dec = visit_VarDec(node->children[0], base_type);
   if (var_dec != NULL) {
@@ -206,7 +222,7 @@ Type* visit_StructSpecifier(ASTNode* node) {
     // StructSpecifier: STRUCT OptTag LC DefList RC
     ASTNode* opttag_node = node->children[1];
     char* struct_name = NULL;
-    if (opttag_node->child_count == 0) {
+    if (opttag_node == NULL) {
       // OptTag: empty
       /* 由于词法分析和语法分析保证了符号名不会以数字开头，
          因此直接用<anon_count>_anon充当匿名符号名 */
@@ -289,13 +305,12 @@ FieldList* visit_StructDecList(ASTNode* node, Type* base_type) {
 FieldList* visit_StructDec(ASTNode* node, Type* base_type) {
   if (node == NULL) return NULL;
   FieldList* var_dec = visit_VarDec(node->children[0], base_type);
+  if (var_dec == NULL) return NULL;
   if (node->child_count == 3) {
     // Dec: VarDec ASSIGNOP Exp
     // 这种情况应该被禁止，因为结构体定义中不允许对域进行初始化
     print_semantic_error(ERR_REDEFINED_STRUCT_FIELD_OR_INIT, node->lineno,
                          var_dec->name);
-    free(var_dec);
-    return NULL;
   }
   // Dec: VarDec
   return var_dec;
@@ -368,6 +383,7 @@ FieldList* visit_VarList(ASTNode* node) {
   // VarList: ParamDec COMMA VarList | ParamDec
   FieldList* fl = visit_ParamDec(node->children[0]);
   if (node->child_count == 3) {
+    if (fl == NULL) return visit_VarList(node->children[2]);
     fl->nxt = visit_VarList(node->children[2]);
   }
   return fl;
@@ -386,11 +402,9 @@ void visit_CompSt(ASTNode* node, Type* return_type) {
   // CompSt: LC DefList StmtList RC
   FieldList* def_list = visit_DefList(node->children[1]);
   while (def_list != NULL) {
-    if (!insert_symbol(def_list->name, def_list->type, def_list->lineno)) {
-      print_semantic_error(ERR_REDEFINED_VARIABLE_OR_STRUCT_NAME,
-                           def_list->lineno, def_list->name);
-    }
-    def_list = def_list->nxt;
+    FieldList* next = def_list->nxt;
+    free(def_list);
+    def_list = next;
   }
   /// TODO:
   /// 处理StmtList，同时需要检查返回值是否正确；Compst可能还有其它部分没有写完
@@ -481,14 +495,20 @@ FieldList* visit_DecList(ASTNode* node, Type* base_type) {
 FieldList* visit_Dec(ASTNode* node, Type* base_type) {
   if (node == NULL || base_type == NULL) return NULL;
   FieldList* var_dec = visit_VarDec(node->children[0], base_type);
+  if (var_dec == NULL) return NULL;
+  if (!insert_symbol(var_dec->name, var_dec->type, var_dec->lineno)) {
+    print_semantic_error(ERR_REDEFINED_VARIABLE_OR_STRUCT_NAME, var_dec->lineno,
+                         var_dec->name);
+    free(var_dec);
+    return NULL;
+  }
+  // FEAT: 假如Exp出错，仅移除Exp，不影响VarDec部分
   if (node->child_count == 3) {
     // Dec: VarDec ASSIGNOP Exp
     Type* exp_type = visit_Exp(node->children[2]);
     if (!compare_two_types(var_dec->type, exp_type)) {
       print_semantic_error(ERR_TYPE_MISMATCH_ASSIGNMENT, var_dec->lineno,
                            var_dec->name);
-      free(var_dec);
-      return NULL;
     }
   }
   // Dec: VarDec

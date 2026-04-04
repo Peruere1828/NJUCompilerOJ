@@ -31,12 +31,23 @@ int insert_symbol(const char* name, const Type* type, const int lineno) {
     cur = cur->hash_nxt;
   }
 #else
+  // 检查当前作用域
   SymbolNode* cur = scope_stack_top->symbol_head;
   while (cur != NULL) {
     if (strcmp(cur->name, name) == 0) {
       return 0;
     }
     cur = cur->scope_nxt;
+  }
+  // 检查全局结构体名冲突
+  SymbolNode* cur_hash = hash_table[ind];
+  while (cur_hash != NULL) {
+    if (strcmp(cur_hash->name, name) == 0) {
+      if (type->kind == TYPE_STRUCTURE || cur_hash->type->kind == TYPE_STRUCTURE) {
+        return 0; 
+      }
+    }
+    cur_hash = cur_hash->hash_nxt;
   }
 #endif
   SymbolNode* new_node = (SymbolNode*)malloc(sizeof(SymbolNode));

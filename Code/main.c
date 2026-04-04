@@ -18,6 +18,13 @@ extern ASTNode* root;
 extern void check_unclosed_comment();
 #endif
 
+extern int SEMANTIC_ERROR;
+extern void semantic_analysis(ASTNode* rt);
+
+#ifdef STAGE_TWO_REQ_ONE
+extern void scan_function_declared_but_not_defined();
+#endif
+
 int main(int argc, char** argv) {
   if (argc <= 1) {
     printf("Usage: %s <filename>\n", argv[0]);
@@ -47,14 +54,21 @@ int main(int argc, char** argv) {
   check_unclosed_comment();
 #endif
 
-#ifdef STAGE_ONE
   if (LEX_ERROR == 0 && SYNTAX_ERROR == 0 && result == 0) {
-    // printf("Parsing SUCCESS!\n");
+#ifdef STAGE_ONE
     print_AST(root, 0);
-  } else {
-    // printf("Parsing FAILED\n");
-  }
 #endif
+  } else {
+    goto Failed;
+  }
+
+  semantic_analysis(root);
+
+  if (SEMANTIC_ERROR != 0) {
+    goto Failed;
+  }
+
+Failed:
   fclose(f);
   return 0;
 }
