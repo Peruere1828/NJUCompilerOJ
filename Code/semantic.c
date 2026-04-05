@@ -79,6 +79,34 @@ static FieldList* merge_field_lists(FieldList* l1, FieldList* l2,
   return l1;
 }
 
+// helper function: 获取VarDec最底层的ID的节点
+static ASTNode* get_id_node_from_vardec(ASTNode* node) {
+  if (node == NULL || node->kind != NODE_VARDEC) return NULL;
+  while (node->kind == NODE_VARDEC) {
+    node = node->children[0];
+  }
+  return node;
+}
+
+// helper function：专门用于在形参入表后，遍历 FunDec 子树回填 ir_val_id
+static void backpatch_param_ir_id(ASTNode* node) {
+  if (node == NULL) return;
+
+  if (node->kind == NODE_VARDEC) {
+    ASTNode* id_node = get_id_node_from_vardec(node);
+    if (id_node) {
+      // 此时恰好在函数的局部作用域内，直接查表就能拿到刚刚分配的 ID
+      int vid = lookup_symbol_id(id_node->val.str_val);
+      id_node->ir_val_id = vid;
+    }
+    return;
+  }
+
+  for (int i = 0; i < node->child_count; ++i) {
+    backpatch_param_ir_id(node->children[i]);
+  }
+}
+
 void visit_Program(ASTNode* node) {
   if (node == NULL) return;
   // Program: ExtDefList
@@ -154,6 +182,8 @@ void visit_ExtDef(ASTNode* node) {
         }
         arg = arg->nxt;
       }
+      // 回填ir_val_id
+      backpatch_param_ir_id(node->children[1]);
       visit_CompSt(node->children[2], base_type);
       current_parsing_function = NULL;
       exit_scope();
@@ -171,6 +201,9 @@ void visit_ExtDecList(ASTNode* node, Type* base_type) {
     if (!insert_symbol(var_dec->name, var_dec->type, var_dec->lineno)) {
       print_semantic_error(ERR_REDEFINED_VARIABLE_OR_STRUCT_NAME,
                            node->children[0]->lineno, var_dec->name);
+    } else {
+      ASTNode* id_node = get_id_node_from_vardec(node->children[0]);
+      id_node->ir_val_id = lookup_symbol_id(var_dec->name);
     }
     free(var_dec);
   }
@@ -313,6 +346,7 @@ FieldList* visit_VarDec(ASTNode* node, Type* base_type) {
     fl->type = base_type;
     fl->nxt = NULL;
     fl->lineno = node->children[0]->lineno;
+    node->val_type = base_type;
     return fl;
   } else if (node->child_count == 4) {
     // VarDec: VarDec LB INT RB
@@ -323,6 +357,7 @@ FieldList* visit_VarDec(ASTNode* node, Type* base_type) {
     array_type->kind = TYPE_ARRAY;
     array_type->u.array.element_type = base_type;
     array_type->u.array.size = node->children[2]->val.int_val;
+    node->val_type = array_type;
     return visit_VarDec(node->children[0], array_type);
   }
   assert(0);
@@ -486,6 +521,8 @@ FieldList* visit_Dec(ASTNode* node, Type* base_type) {
     free(var_dec);
     return NULL;
   }
+  ASTNode* id_node = get_id_node_from_vardec(node->children[0]);
+  id_node->ir_val_id = lookup_symbol_id(var_dec->name);
   /// FEAT: 假如Exp出错，仅移除Exp，不影响VarDec部分
   if (node->child_count == 3) {
     // Dec: VarDec ASSIGNOP Exp

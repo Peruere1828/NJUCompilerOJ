@@ -23,6 +23,8 @@ unsigned int gen_hash(const char* name) {
 StackNode* scope_stack_top = NULL;
 SymbolNode* hash_table[HASH_TABLE_SIZE];
 
+int global_var_count = 0;
+
 int insert_symbol(const char* name, const Type* type, const int lineno) {
   const unsigned int ind = gen_hash(name);
   assert(scope_stack_top != NULL);
@@ -64,6 +66,7 @@ int insert_symbol(const char* name, const Type* type, const int lineno) {
   new_node->type = type;
   new_node->depth = scope_stack_top->depth;
   new_node->lineno = lineno;
+  new_node->ir_var_id = ++global_var_count;
 
   new_node->hash_nxt = hash_table[ind];
   hash_table[ind] = new_node;
@@ -73,16 +76,29 @@ int insert_symbol(const char* name, const Type* type, const int lineno) {
   return 1;
 }
 
-Type* lookup_symbol(const char* name) {
+// helper function: 查找名字对应的symbol node
+static SymbolNode* lookup_symbol_node(const char* name) {
   const unsigned int ind = gen_hash(name);
   SymbolNode* cur = hash_table[ind];
   while (cur != NULL) {
     if (strcmp(cur->name, name) == 0) {
-      return cur->type;
+      return cur;
     }
     cur = cur->hash_nxt;
   }
   return NULL;
+}
+
+Type* lookup_symbol(const char* name) {
+  SymbolNode* node = lookup_symbol_node(name);
+  if (node == NULL) return NULL;
+  return node->type;
+}
+
+int lookup_symbol_id(const char* name) {
+  SymbolNode* node = lookup_symbol_node(name);
+  if (node == NULL) return -1;
+  return node->ir_var_id;
 }
 
 void enter_scope() {

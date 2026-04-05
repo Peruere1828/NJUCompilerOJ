@@ -101,15 +101,20 @@ Type* visit_Exp(ASTNode* node) {
                              child->val.str_val);
         return NULL;
       }
+      child->ir_val_id = lookup_symbol_id(child->val.str_val);
+      node->val_type = tp;
       return tp;
     } else if (child->kind == TOKEN_INT) {
+      node->val_type = &type_int;
       return &type_int;
     } else {
+      node->val_type = &type_float;
       return &type_float;
     }
   } else if (node->children[0]->kind == TOKEN_LP) {
     // Exp: LP Exp RP
-    return visit_Exp(node->children[1]);
+    node->val_type = visit_Exp(node->children[1]);
+    return node->val_type;
   } else if (node->children[0]->kind == TOKEN_MINUS) {
     // Exp: MINUS Exp
     Type* tp = visit_Exp(node->children[1]);
@@ -119,6 +124,7 @@ Type* visit_Exp(ASTNode* node) {
                            node->children[1]->lineno, NULL);
       return NULL;
     }
+    node->val_type = tp;
     return tp;
   } else if (node->children[0]->kind == TOKEN_NOT) {
     // Exp: NOT Exp
@@ -129,6 +135,7 @@ Type* visit_Exp(ASTNode* node) {
                            node->children[1]->lineno, NULL);
       return NULL;
     }
+    node->val_type = tp;
     return tp;
   } else if (node->child_count == 3 && node->children[0]->kind == NODE_EXP &&
              node->children[2]->kind == NODE_EXP) {
@@ -151,6 +158,7 @@ Type* visit_Exp(ASTNode* node) {
         print_semantic_error(ERR_TYPE_MISMATCH_ASSIGNMENT, op_lineno, NULL);
         return NULL;
       }
+      node->val_type = tp1;
       return tp1;
     }
 
@@ -170,6 +178,7 @@ Type* visit_Exp(ASTNode* node) {
           print_semantic_error(ERR_TYPE_MISMATCH_OPERATOR, op_lineno, NULL);
           return NULL;
         }
+        node->val_type = &type_int;
         return &type_int;
         break;
       case TOKEN_RELOP:
@@ -177,6 +186,7 @@ Type* visit_Exp(ASTNode* node) {
           print_semantic_error(ERR_TYPE_MISMATCH_OPERATOR, op_lineno, NULL);
           return NULL;
         }
+        node->val_type = &type_int;
         return &type_int;
         break;
       case TOKEN_PLUS:
@@ -187,6 +197,7 @@ Type* visit_Exp(ASTNode* node) {
           print_semantic_error(ERR_TYPE_MISMATCH_OPERATOR, op_lineno, NULL);
           return NULL;
         }
+        node->val_type = tp1;
         return tp1;
         break;
       default:
@@ -240,6 +251,7 @@ Type* visit_Exp(ASTNode* node) {
       free(to_free);
     }
 
+    node->val_type = tp->u.function.ret_type;
     return tp->u.function.ret_type;
   } /* Exp: Exp LB Exp RB | Exp DOT ID */
   else if (node->children[1]->kind == TOKEN_LB) {
@@ -259,6 +271,8 @@ Type* visit_Exp(ASTNode* node) {
                            node->children[2]->lineno, NULL);
       // FEAT: 当下标类型出错，仍然返回arr对应的type
     }
+
+    node->val_type = arr_type->u.array.element_type;
     return arr_type->u.array.element_type;
   } else {
     // Exp: Exp DOT ID
@@ -274,6 +288,7 @@ Type* visit_Exp(ASTNode* node) {
     FieldList* cur = struct_type->u.structure.members;
     while (cur != NULL) {
       if (strcmp(cur->name, name) == 0) {
+        node->val_type = cur->type;
         return cur->type;
       }
       cur = cur->nxt;

@@ -14,6 +14,8 @@ typedef struct SymbolNode {
 
   struct SymbolNode* scope_nxt;
   struct SymbolNode* hash_nxt;  // 开链法的下一个hash相同的符号
+
+  int ir_var_id;
 } SymbolNode;
 
 typedef struct StackNode {
@@ -28,8 +30,12 @@ extern SymbolNode* hash_table[];
 
 int insert_symbol(const char* name, const Type* type, const int lineno);
 Type* lookup_symbol(const char* name);
+int lookup_symbol_id(const char* name);
 
 void enter_scope();
 void exit_scope();
+
+// 中间代码生成需要给每一个变量一个全局唯一的变量名
+extern int global_var_count;
 
 #endif

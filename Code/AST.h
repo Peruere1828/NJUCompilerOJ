@@ -69,6 +69,8 @@ typedef enum {
   RELOP_GT = '>',
 } RelopKind;
 
+typedef struct Type Type;
+
 // AST上的一个节点，根据kind区分是代表语法单元还是词法单元
 typedef struct ASTNode {
   NodeKind kind;
@@ -83,6 +85,9 @@ typedef struct ASTNode {
 
   struct ASTNode** children;
   int child_count;
+
+  Type* val_type;
+  int ir_val_id;
 } ASTNode;
 
 extern ASTNode* root;  // 用于存储语法树的根节点
