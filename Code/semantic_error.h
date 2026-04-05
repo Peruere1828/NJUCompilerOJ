@@ -1,6 +1,8 @@
 #ifndef SEMANTIC_ERROR_H
 #define SEMANTIC_ERROR_H
 
+extern int SEMANTIC_ERROR;
+
 typedef enum {
   // 错误类型 1：变量在使用时未经定义
   ERR_UNDEFINED_VARIABLE = 1,

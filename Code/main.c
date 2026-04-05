@@ -2,6 +2,8 @@
 
 #include "AST.h"
 #include "config.h"
+#include "semantic.h"
+#include "semantic_error.h"
 
 extern FILE* yyin;
 extern int yylineno;
@@ -17,9 +19,6 @@ extern ASTNode* root;
 #ifdef STAGE_ONE_REQ_THREE
 extern void check_unclosed_comment();
 #endif
-
-extern int SEMANTIC_ERROR;
-extern void semantic_analysis(ASTNode* rt);
 
 #ifdef STAGE_TWO_REQ_ONE
 extern void scan_function_declared_but_not_defined();

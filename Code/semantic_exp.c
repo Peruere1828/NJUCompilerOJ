@@ -26,8 +26,6 @@ static int is_lvalue(ASTNode* exp_node) {
 // 定义一个静态缓冲区，足够容纳绝大多数报错表达式
 static char exp_name_buf[1024];
 
-static void build_exp_str(ASTNode* node, char* buf, size_t max_len);
-
 static void build_exp_str(ASTNode* node, char* buf, size_t max_len) {
   if (node == NULL || strlen(buf) >= max_len - 1) return;
 
@@ -82,7 +80,6 @@ static const char* get_exp_name(ASTNode* exp_node) {
 FieldList* visit_Args(ASTNode* node);
 
 Type* visit_Exp(ASTNode* node) {
-  // TODO: 报错的时候记录完整Exp名
   if (node == NULL) return NULL;
   if (node->child_count == 1) {
     // Exp: ID | INT | FLOAT
