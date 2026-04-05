@@ -8,7 +8,7 @@ unsigned int gen_hash(const char* name);
 
 typedef struct SymbolNode {
   const char* name;
-  const Type* type;
+  Type* type;
   int depth;
   int lineno;
 

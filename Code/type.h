@@ -8,7 +8,8 @@
 typedef struct Type Type;
 typedef struct FieldList FieldList;
 
-// 字段列表结构体，用于表示结构体成员或函数参数列表
+// 字段列表结构体，用于表示结构体成员或函数参数列表。
+// 语义分析阶段中，FieldList 既可表示结构体字段链表，也可表示函数参数链表。
 struct FieldList {
   char* name;      // 字段名称
   Type* type;      // 字段类型

@@ -10,6 +10,10 @@
 #include "symbol_table.h"
 #include "type.h"
 
+// Expression semantic checker:
+// 处理表达式类型推导、函数调用匹配、数组访问、结构体访问、赋值和运算符类型检查。
+// get_exp_name 用于构造简短的表达式名称，便于报错时提示具体的左值或字段访问。
+
 // 判断一个Exp节点是否是左值
 static int is_lvalue(ASTNode* exp_node) {
   if (exp_node == NULL || exp_node->kind != NODE_EXP) return 0;
@@ -79,6 +83,12 @@ static const char* get_exp_name(ASTNode* exp_node) {
 
 FieldList* visit_Args(ASTNode* node);
 
+// Expression type checking engine.
+// 1) 叶子节点直接返回基本类型或符号表查到的变量类型；
+// 2) 一元/二元运算检查运算符与操作数类型；
+// 3) 赋值表达式保证左值与右值类型相同；
+// 4) 函数调用检查符号是否为函数并匹配参数列表；
+// 5) 数组和结构体访问分别验证被操作对象的类型。
 Type* visit_Exp(ASTNode* node) {
   if (node == NULL) return NULL;
   if (node->child_count == 1) {

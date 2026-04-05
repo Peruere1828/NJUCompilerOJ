@@ -42,6 +42,7 @@ make clean
 
 # 5. 回到根目录
 cd ..
+chmod +x parser
 
 # 6. 将报告拷贝到根目录
 echo ">> 正在准备实验报告 (report.pdf)..."

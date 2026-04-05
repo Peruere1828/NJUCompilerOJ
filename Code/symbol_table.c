@@ -6,6 +6,11 @@
 
 #define HASH_TABLE_SIZE 0x3fff
 
+// 符号表采用散列表 + 链地址法存储符号，同时支持可选的作用域栈。
+// hash_table 用于快速全局查找名字，scope_stack_top
+// 用于维护当前作用域中新增符号。 在阶段二开启 STAGE_TWO_REQ_TWO
+// 时才会维护嵌套作用域，退出作用域时会回收当前层符号。
+
 unsigned int gen_hash(const char* name) {
   unsigned int val = 0, i;
   for (; *name; ++name) {
@@ -21,6 +26,9 @@ SymbolNode* hash_table[HASH_TABLE_SIZE];
 int insert_symbol(const char* name, const Type* type, const int lineno) {
   const unsigned int ind = gen_hash(name);
   assert(scope_stack_top != NULL);
+  // 插入符号时先检查当前作用域是否已经存在同名符号。
+  // 如果开启了
+  // STAGE_TWO_REQ_TWO，则仅检查当前作用域链；否则直接检查所有同名符号。
 #ifndef STAGE_TWO_REQ_TWO
   // 虽然下面的循环在不开启嵌套栈时也能正确地检查当前作用域，但为了效率起见，直接遍历hash表的链表就行了
   SymbolNode* cur = hash_table[ind];
@@ -43,8 +51,9 @@ int insert_symbol(const char* name, const Type* type, const int lineno) {
   SymbolNode* cur_hash = hash_table[ind];
   while (cur_hash != NULL) {
     if (strcmp(cur_hash->name, name) == 0) {
-      if (type->kind == TYPE_STRUCTURE || cur_hash->type->kind == TYPE_STRUCTURE) {
-        return 0; 
+      if (type->kind == TYPE_STRUCTURE ||
+          cur_hash->type->kind == TYPE_STRUCTURE) {
+        return 0;
       }
     }
     cur_hash = cur_hash->hash_nxt;
@@ -77,6 +86,7 @@ Type* lookup_symbol(const char* name) {
 }
 
 void enter_scope() {
+  // 进入新的作用域时，创建一个新的栈节点，后续插入的符号会记录到该栈节点中。
 #ifdef STAGE_TWO_REQ_TWO
   StackNode* new_scope = (StackNode*)malloc(sizeof(StackNode));
   new_scope->depth = (scope_stack_top == NULL ? 0 : scope_stack_top->depth + 1);
@@ -96,6 +106,8 @@ void enter_scope() {
 void exit_scope() {
   assert(scope_stack_top != NULL);
 #ifdef STAGE_TWO_REQ_TWO
+  // 退出当前作用域时，从hash表中移除当前层定义的符号节点，
+  // 并释放这些节点所占的内存。
   SymbolNode* cur = scope_stack_top->symbol_head;
   while (cur != NULL) {
     SymbolNode* to_delete = cur;

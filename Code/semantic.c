@@ -1,3 +1,5 @@
+#include "semantic.h"
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,13 +8,17 @@
 #include "AST.h"
 #include "common.h"
 #include "config.h"
-#include "semantic.h"
 #include "semantic_error.h"
 #include "symbol_table.h"
 #include "type.h"
 
 // 当前解析的函数名称，用于语义报错
 static const char* current_parsing_function = NULL;
+
+// 语义分析采用递归遍历AST的方式。
+// 通过访问各个节点，构造类型信息、函数参数列表、结构体成员列表，
+// 同时维护符号表进行作用域检查、重定义检查和类型一致性检查。
+// 错误类型由 semantic_error.h 中定义的枚举统一输出。
 
 // 语义分析入口
 void semantic_analysis(ASTNode* root) {
@@ -127,8 +133,6 @@ void visit_ExtDef(ASTNode* node) {
                                node->children[1]->lineno, fun_dec->name);
         } else {
           symbol_type->u.function.is_defined = is_definition;
-          // fun_dec->type->u.function.is_defined = is_definition;
-          // insert_symbol(fun_dec->name, fun_dec->type, fun_dec->lineno);
         }
       }
     } else {
@@ -143,7 +147,7 @@ void visit_ExtDef(ASTNode* node) {
       FieldList* arg = fun_dec->type->u.function.args;
       while (arg != NULL) {
         // 处理FunDec的VarList的时候去掉了重复的参数
-        // 但是不保证name跟某个type重名，所以仍然要判断
+        // 但是不保证name跟某个type重名，或者不保证跟之前某个全局变量重名，所以仍然要判断
         if (!insert_symbol(arg->name, arg->type, arg->lineno)) {
           print_semantic_error(ERR_REDEFINED_VARIABLE_OR_STRUCT_NAME,
                                arg->lineno, arg->name);
@@ -222,6 +226,7 @@ Type* visit_StructSpecifier(ASTNode* node) {
     struct_type->kind = TYPE_STRUCTURE;
     struct_type->u.structure.name = struct_name;
     // 此处的DefList并不等于CompSt中的DefList，因为在结构体中禁止赋值
+    /// FEAT: “不同结构体的域重名”或者“域和普通变量重名”均不报错
     insert_symbol(struct_name, struct_type, node->children[0]->lineno);
     struct_type->u.structure.members = visit_StructDefList(node->children[3]);
     return struct_type;
@@ -311,6 +316,8 @@ FieldList* visit_VarDec(ASTNode* node, Type* base_type) {
     return fl;
   } else if (node->child_count == 4) {
     // VarDec: VarDec LB INT RB
+    // 数组类型通过递归构造，每个维度用一个 TYPE_ARRAY 节点串联起来。
+    // 例如 int a[2][3] 会返回一个元素类型为 int 的二维数组类型。
     /// BUG: 存在内存泄漏
     Type* array_type = (Type*)malloc(sizeof(Type));
     array_type->kind = TYPE_ARRAY;

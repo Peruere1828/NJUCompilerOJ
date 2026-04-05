@@ -29,13 +29,19 @@ if [ ! -f "parser" ]; then
     exit 1
 fi
 
+cp parser ../
+
+echo ">> 正在清理 Code 目录中的编译产物..."
+make clean
+
 echo "COMPILATION SUCCESSFUL! Starting tests..."
 
 echo "RUNNING TESTS..."
 cd ..
+chmod +x parser
 
 for test_file in $TEST_DIR/*.cmm; do
     echo "----------------------------------------"
     echo "Testing: $test_file"
-    ./$CODE_DIR/parser "$test_file"
+    ./parser "$test_file"
 done

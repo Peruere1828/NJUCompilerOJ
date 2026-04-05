@@ -6,6 +6,9 @@ Type type_int = {.kind = TYPE_BASIC, .u.basic = BASIC_INT};
 
 Type type_float = {.kind = TYPE_BASIC, .u.basic = BASIC_FLOAT};
 
+// 类型比较函数，用于判断两个类型是否“等价”。
+// 基本类型使用值相等，数组类型递归比较元素类型，函数类型比较返回值与形参列表，
+// 结构体类型默认使用名等价（阶段三可切换为成员等价）。
 int compare_two_types(Type* t1, Type* t2) {
   if (t1 == t2) return 1;
   if (t1 == NULL || t2 == NULL) return 0;
