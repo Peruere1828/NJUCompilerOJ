@@ -3,8 +3,7 @@
 
 #include "config.h"
 #include "type.h"
-
-unsigned int gen_hash(const char* name);
+#include "common.h"
 
 typedef struct SymbolNode {
   const char* name;

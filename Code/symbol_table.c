@@ -4,24 +4,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define HASH_TABLE_SIZE 0x3fff
-
 // 符号表采用散列表 + 链地址法存储符号，同时支持可选的作用域栈。
 // hash_table 用于快速全局查找名字，scope_stack_top
 // 用于维护当前作用域中新增符号。 在阶段二开启 STAGE_TWO_REQ_TWO
 // 时才会维护嵌套作用域，退出作用域时会回收当前层符号。
 
-unsigned int gen_hash(const char* name) {
-  unsigned int val = 0, i;
-  for (; *name; ++name) {
-    val = (val << 2) + *name;
-    if (i = val & ~HASH_TABLE_SIZE) val = (val ^ (i >> 12)) & HASH_TABLE_SIZE;
-  }
-  return val;
-}
-
 StackNode* scope_stack_top = NULL;
-SymbolNode* hash_table[HASH_TABLE_SIZE];
+SymbolNode* hash_table[HASH_TABLE_SIZE + 1];
 
 int global_var_count = 0;
 
