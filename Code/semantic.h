@@ -31,6 +31,8 @@ FieldList* visit_DecList(ASTNode* node, Type* base_type);
 FieldList* visit_Dec(ASTNode* node, Type* base_type);
 Type* visit_Exp(ASTNode* node);
 
+ASTNode* get_id_node_from_vardec(ASTNode* node);
+
 #ifdef STAGE_TWO_REQ_ONE
 void scan_function_declared_but_not_defined();
 #endif

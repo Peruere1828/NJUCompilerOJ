@@ -80,7 +80,7 @@ static FieldList* merge_field_lists(FieldList* l1, FieldList* l2,
 }
 
 // helper function: 获取VarDec最底层的ID的节点
-static ASTNode* get_id_node_from_vardec(ASTNode* node) {
+ASTNode* get_id_node_from_vardec(ASTNode* node) {
   if (node == NULL || node->kind != NODE_VARDEC) return NULL;
   while (node->kind == NODE_VARDEC) {
     node = node->children[0];
@@ -214,20 +214,20 @@ void visit_ExtDecList(ASTNode* node, Type* base_type) {
 
 Type* visit_Specifier(ASTNode* node) {
   if (node == NULL) return NULL;
+  Type* tp = NULL;
   if (node->children[0]->kind == TOKEN_TYPE) {
     // Specifier: TYPE
     if (strcmp(node->children[0]->val.str_val, "int") == 0) {
-      return &type_int;
+      tp = &type_int;
     } else if (strcmp(node->children[0]->val.str_val, "float") == 0) {
-      return &type_float;
-    } else {
-      assert(0);
+      tp = &type_float;
     }
   } else if (node->children[0]->kind == NODE_STRUCTSPECIFIER) {
     // Specifier: StructSpecifier
-    return visit_StructSpecifier(node->children[0]);
+    tp = visit_StructSpecifier(node->children[0]);
   }
-  assert(0);
+  node->val_type = tp;
+  return tp;
 }
 
 // 结构体定义和结构体声明

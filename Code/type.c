@@ -52,3 +52,48 @@ int compare_two_types(Type* t1, Type* t2) {
   }
   return 0;
 }
+
+int calculate_type_size(Type* tp) {
+  if (tp == NULL) return 0;
+  switch (tp->kind) {
+    case TYPE_BASIC:
+      return 4;
+      break;
+    case TYPE_ARRAY:
+      return calculate_type_size(tp->u.array.element_type) * tp->u.array.size;
+      break;
+    case TYPE_STRUCTURE: {
+      int sum = 0;
+      FieldList* cur = tp->u.structure.members;
+      while (cur != NULL) {
+        sum += calculate_type_size(cur->type);
+        cur = cur->nxt;
+      }
+      return sum;
+    }
+    case TYPE_FUNCTION:
+      return 0;
+      break;
+
+    default:
+      break;
+  }
+  return 0;
+}
+
+int calculate_struct_field_offset(Type* struct_tp, const char* field_name) {
+  if (struct_tp == NULL || struct_tp->kind != TYPE_STRUCTURE) return -1;
+
+  int offset = 0;
+  FieldList* member = struct_tp->u.structure.members;
+
+  while (member != NULL) {
+    if (strcmp(member->name, field_name) == 0) {
+      return offset;
+    }
+    offset += calculate_type_size(member->type);
+    member = member->nxt;
+  }
+
+  return -1;
+}

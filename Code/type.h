@@ -55,4 +55,9 @@ extern Type type_float;
 // 比较两个类型是否相同，相同返回1，否则返回0
 int compare_two_types(Type* t1, Type* t2);
 
+// 计算类型对应的大小
+int calculate_type_size(Type* tp);
+// 计算一个struct中某个字段的偏移
+int calculate_struct_field_offset(Type* struct_tp, const char* field_name);
+
 #endif
