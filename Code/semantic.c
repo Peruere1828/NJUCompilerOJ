@@ -89,6 +89,7 @@ ASTNode* get_id_node_from_vardec(ASTNode* node) {
 }
 
 // helper function：专门用于在形参入表后，遍历 FunDec 子树回填 ir_val_id
+/// TODO: 可以更优雅地实现，让insert_symbol直接返回SymbolNode*，避免多次lookup
 static void backpatch_param_ir_id(ASTNode* node) {
   if (node == NULL) return;
 
@@ -96,8 +97,9 @@ static void backpatch_param_ir_id(ASTNode* node) {
     ASTNode* id_node = get_id_node_from_vardec(node);
     if (id_node) {
       // 此时恰好在函数的局部作用域内，直接查表就能拿到刚刚分配的 ID
-      int vid = lookup_symbol_id(id_node->val.str_val);
-      id_node->ir_val_id = vid;
+      SymbolNode* sn = lookup_symbol_node(id_node->val.str_val);
+      id_node->is_param = sn->is_param = 1;
+      id_node->ir_val_id = sn->ir_var_id;
     }
     return;
   }

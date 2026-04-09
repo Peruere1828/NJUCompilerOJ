@@ -66,7 +66,7 @@ int insert_symbol(const char* name, const Type* type, const int lineno) {
 }
 
 // helper function: 查找名字对应的symbol node
-static SymbolNode* lookup_symbol_node(const char* name) {
+SymbolNode* lookup_symbol_node(const char* name) {
   const unsigned int ind = gen_hash(name);
   SymbolNode* cur = hash_table[ind];
   while (cur != NULL) {

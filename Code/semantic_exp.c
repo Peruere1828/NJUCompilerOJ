@@ -101,14 +101,16 @@ Type* visit_Exp(ASTNode* node) {
                              child->val.str_val);
         return NULL;
       }
-      child->ir_val_id = lookup_symbol_id(child->val.str_val);
-      node->val_type = tp;
+      SymbolNode* sn = lookup_symbol_node(child->val.str_val);
+      child->ir_val_id = sn->ir_var_id;
+      child->val_type = node->val_type = tp;
+      child->is_param = sn->is_param;
       return tp;
     } else if (child->kind == TOKEN_INT) {
-      node->val_type = &type_int;
+      child->val_type = node->val_type = &type_int;
       return &type_int;
     } else {
-      node->val_type = &type_float;
+      child->val_type = node->val_type = &type_float;
       return &type_float;
     }
   } else if (node->children[0]->kind == TOKEN_LP) {

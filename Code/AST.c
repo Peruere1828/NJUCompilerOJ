@@ -35,6 +35,9 @@ ASTNode* create_AST_node(NodeKind kind, const char* name, int child_count,
       break;
     }
   }
+  node->ir_val_id = 0;
+  node->val_type = NULL;
+  node->is_param = 0;
   return node;
 }
 
@@ -45,6 +48,9 @@ ASTNode* create_token_node(NodeKind kind, const char* name, int lineno) {
   node->lineno = lineno;
   node->child_count = 0;
   node->children = NULL;
+  node->ir_val_id = 0;
+  node->val_type = NULL;
+  node->is_param = 0;
   return node;
 }
 

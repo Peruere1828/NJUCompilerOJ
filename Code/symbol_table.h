@@ -15,6 +15,7 @@ typedef struct SymbolNode {
   struct SymbolNode* hash_nxt;  // 开链法的下一个hash相同的符号
 
   int ir_var_id;
+  int is_param;
 } SymbolNode;
 
 typedef struct StackNode {
@@ -28,6 +29,7 @@ extern StackNode* scope_stack_top;
 extern SymbolNode* hash_table[];
 
 int insert_symbol(const char* name, const Type* type, const int lineno);
+SymbolNode* lookup_symbol_node(const char* name);
 Type* lookup_symbol(const char* name);
 int lookup_symbol_id(const char* name);
 

@@ -88,6 +88,7 @@ typedef struct ASTNode {
 
   Type* val_type;
   int ir_val_id;
+  int is_param;
 } ASTNode;
 
 extern ASTNode* root;  // 用于存储语法树的根节点
