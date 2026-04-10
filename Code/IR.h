@@ -40,6 +40,11 @@ Value C：
 在下一步，我们会把这种 IR 进行变量重命名，让它符合 SSA 的要求，变成这样：
 t_1 := v_1_1 + #5
 v_1_2 := t_1
+
+之前阶段的名称字段char*实际上都是引用的AST上的内容。考虑到中间代码是一个独立的部分，
+这个阶段涉及的字段应当重新strdup
+
+先翻译成TAC格式，再做CFG，计算支配树得到SSA
 */
 
 #ifndef IR_H
@@ -50,7 +55,7 @@ v_1_2 := t_1
 
 typedef struct Use Use;
 typedef struct Value Value;
-typedef struct BasicBlock BasicBlock;
+typedef struct IRModule IRModule;
 
 struct Use {
   Value* def;      // 指向被使用的源数据
@@ -61,8 +66,10 @@ struct Use {
 typedef enum {
   VK_CONST_INT,    // 整数常量
   VK_CONST_FLOAT,  // 浮点数常量
-  VK_VAR,          // 源代码中的变量
+  VK_VAR,          // 局部变量
+  VK_GLOBAL_VAR,   // 全局变量
   VK_INST,         // 计算或跳转指令
+  VK_FUNCTION,     // 函数
   VK_BB            // 基本块
 } ValueKind;
 
@@ -104,13 +111,23 @@ struct Value {
   Type* tp;
   Use* use_list;
 
+  int id;
+
   union {
     // 常量
     unsigned long int_val;
     float float_val;
 
-    // 变量
+    // 局部变量
     int var_id;
+
+    // 全局变量
+    struct {
+      int var_id;
+      Value* next_global;  // 用于串联到 IRModule
+    } global_var;
+
+    // 在语义分析阶段给所有局部变量和全局变量分配了唯一var_id
 
     // 指令
     struct {
@@ -118,17 +135,68 @@ struct Value {
       // 操作数数组
       int num_ops;
       Value** ops;
-      RelopKind rk; // 条件跳转的关系符号
+      RelopKind rk;  // 条件跳转的关系符号
 
       // 归属的基本块，以及前后指令
-      BasicBlock* parent_bb;
-      Value* prev;
-      Value* next;
+      Value* parent_bb;
+      Value* pre;
+      Value* nxt;
     } inst;
 
     // 基本块
-    int bb_id;  // 基本块的 label
+    struct {
+      int bb_id;  // 基本块id
+
+      Value* parent_func;  // 所属的函数 (VK_FUNC)
+      Value* inst_head;    // 块内指令链表头
+      Value* inst_tail;    // 块内指令链表尾
+
+      Value* next_bb;  // 用于在 Function 中串联基本块
+
+      // CFG 预留：前驱与后继基本块数组
+      Value** preds;
+      int num_preds;
+      Value** succs;
+      int num_succs;
+    } bb;
+
+    // 函数
+    struct {
+      char* name;
+      int argc;
+      Value** args;  // 形参 Value 列表
+
+      IRModule* parent_module;
+      Value* bb_head;  // 函数内基本块链表头
+      Value* bb_tail;  // 函数内基本块链表尾
+
+      Value* next_func;  // 串联在 IRModule 的 func_list 中
+    } func;
   } u;
 };
+
+// 用于在 Module 层维持一个结构体注册表
+typedef struct StructTypeDef {
+  char* name;  // 必须是 strdup 后的独立内存
+  Type* type;  // 指向具体的结构体类型描述
+  struct StructTypeDef* next;
+} StructTypeDef;
+
+// 表示整个 C-- 程序的顶层 IR 模块
+typedef struct IRModule {
+  // 函数链表头 (通过 Value.u.func.next_func 串联)
+  Value* func_list;
+
+  // 全局变量链表头 (通过 Value.u.global.next_global 串联)
+  Value* global_var_list;
+
+  // 结构体类型注册表
+  StructTypeDef* struct_list;
+} IRModule;
+
+// 创建基础的 Value 节点
+Value* create_value(ValueKind vk, Type* tp);
+// 指令 user 使用了数据源 def
+void add_use(Value* def, Value* user);
 
 #endif

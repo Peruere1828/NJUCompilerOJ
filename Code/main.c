@@ -4,6 +4,7 @@
 #include "config.h"
 #include "semantic.h"
 #include "semantic_error.h"
+#include "translate.h"
 
 extern FILE* yyin;
 extern int yylineno;
@@ -25,10 +26,17 @@ extern void scan_function_declared_but_not_defined();
 #endif
 
 int main(int argc, char** argv) {
+#if defined(STAGE_ONE) || defined(STAGE_TWO)
   if (argc <= 1) {
     printf("Usage: %s <filename>\n", argv[0]);
     return 1;
   }
+#elif defined(STAGE_THREE)
+  if (argc <= 1) {
+    printf("Usage: %s <filename> <output_ir>\n", argv[0]);
+    return 1;
+  }
+#endif
 
   // 打开 Makefile 传入的测试文件
   FILE* f = fopen(argv[1], "r");
@@ -48,6 +56,7 @@ int main(int argc, char** argv) {
 #endif
 
   int result = yyparse();
+  fclose(f);
 
 #ifdef STAGE_ONE_REQ_THREE
   check_unclosed_comment();
@@ -67,7 +76,12 @@ int main(int argc, char** argv) {
     goto Failed;
   }
 
+  IRModule* ir_module = translate_program(root);
+  FILE* out = stdout;
+  if (ir_module != NULL) {
+    print_module(ir_module, out);
+  }
 Failed:
-  fclose(f);
+  
   return 0;
 }

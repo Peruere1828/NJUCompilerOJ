@@ -349,6 +349,7 @@ FieldList* visit_VarDec(ASTNode* node, Type* base_type) {
     fl->nxt = NULL;
     fl->lineno = node->children[0]->lineno;
     node->val_type = base_type;
+    node->children[0]->val_type = base_type;
     return fl;
   } else if (node->child_count == 4) {
     // VarDec: VarDec LB INT RB

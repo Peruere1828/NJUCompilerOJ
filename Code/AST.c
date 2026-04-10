@@ -54,6 +54,19 @@ ASTNode* create_token_node(NodeKind kind, const char* name, int lineno) {
   return node;
 }
 
+extern Type type_int;
+extern Type type_float;
+extern int compare_two_types(Type* t1, Type* t2);
+
+void debug_ast(ASTNode* node) {
+  if (node == NULL) return;
+  if (node->ir_val_id) printf(" id=%d", node->ir_val_id);
+  if (node->val_type) {
+    if (compare_two_types(&type_int, node->val_type)) printf(" type=int");
+    if (compare_two_types(&type_float, node->val_type)) printf(" type=float");
+  }
+}
+
 void print_AST(ASTNode* node, int depth) {
   if (node == NULL) return;
   // 是语法单元且产生空串
@@ -65,11 +78,13 @@ void print_AST(ASTNode* node, int depth) {
   if (node->kind < TOKEN_INT) {
     // 语法单元
     printf("%s (%d)\n", node->name, node->lineno);
+    debug_ast(node);
   } else {
     // 词法单元
     printf("%s", node->name);
     if (node->kind == TOKEN_ID || node->kind == TOKEN_TYPE) {
       printf(": %s", node->val.str_val);
+      debug_ast(node);
     } else if (node->kind == TOKEN_INT) {
       printf(": %lu", node->val.int_val);
     } else if (node->kind == TOKEN_FLOAT) {
