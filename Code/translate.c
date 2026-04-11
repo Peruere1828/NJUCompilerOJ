@@ -86,7 +86,7 @@ void translate_VarList_Params(IRBuilder* builder, ASTNode* node) {
   Value* param_var =
       get_or_create_var(builder, id_node->ir_val_id, id_node->val_type);
   build_param(builder, param_var);
-
+  /// FEAT: 这里变量用值传递，数组和结构体都是指针传递
   if (node->child_count == 3) {
     translate_VarList_Params(builder, node->children[2]);
   }
@@ -342,6 +342,10 @@ Value* translate_LVal_Addr(IRBuilder* builder, ASTNode* node) {
     if (offset == 0) return base_addr;
     Value* offset_val = build_const_int(offset);
     return build_binary_op(builder, OP_I_ADD, base_addr, offset_val);
+  } else if (node->child_count >= 3 && node->children[0]->kind == TOKEN_ID &&
+             node->children[1]->kind == TOKEN_LP) {
+              // 函数类型
+    return translate_Exp(builder, node);
   }
   return NULL;
 }

@@ -10,7 +10,6 @@ extern FILE* yyin;
 extern int yylineno;
 extern char* yytext;
 extern int yylex();
-extern const char* get_token_name(int);
 extern int yyparse();
 extern int LEX_ERROR;
 extern int SYNTAX_ERROR;
@@ -19,10 +18,6 @@ extern ASTNode* root;
 
 #ifdef STAGE_ONE_REQ_THREE
 extern void check_unclosed_comment();
-#endif
-
-#ifdef STAGE_TWO_REQ_ONE
-extern void scan_function_declared_but_not_defined();
 #endif
 
 int main(int argc, char** argv) {
@@ -62,38 +57,36 @@ int main(int argc, char** argv) {
   check_unclosed_comment();
 #endif
 
-  if (LEX_ERROR == 0 && SYNTAX_ERROR == 0 && result == 0) {
-#ifdef STAGE_ONE
-    print_AST(root, 0);
-#endif
-  } else {
+  if (LEX_ERROR != 0 || SYNTAX_ERROR != 0 || result != 0) {
     goto Failed;
   }
+#ifdef STAGE_ONE
+  print_AST(root, 0);
+  goto End;
+#endif
 
   semantic_analysis(root);
 
-  if (SEMANTIC_ERROR != 0) {
-    goto Failed;
-  }
+#ifdef STAGE_TWO
+  goto End;
+#endif
 
   IRModule* ir_module = translate_program(root);
-#if defined(STAGE_THREE)
   FILE* out = fopen(argv[2], "w");
   if (!out) {
     perror(argv[2]);
     return 1;
   }
-#else
-  FILE* out = stdout;
-#endif
   if (ir_module != NULL) {
     print_module(ir_module, out);
   }
-#if defined(STAGE_THREE)
   fclose(out);
+
+#ifdef STAGE_THREE
+  goto End;
 #endif
 
 Failed:
-
+End:
   return 0;
 }
