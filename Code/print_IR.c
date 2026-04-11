@@ -48,7 +48,15 @@ void print_module(IRModule* module, FILE* out) {
       while (curr_inst) {
         // 给指令分配临时 ID 用于打印
         if (curr_inst->vk == VK_INST) {
-          curr_inst->id = global_inst_id++;
+          Opcode op = curr_inst->u.inst.opcode;
+          // 只有算数运算和 CALL 没有传入 dest，它们自身代表临时值，需要分配 t
+          // 编号
+          int has_lhs = (op == OP_I_ADD || op == OP_I_SUB || op == OP_I_MUL ||
+                         op == OP_I_DIV || op == OP_F_ADD || op == OP_F_SUB ||
+                         op == OP_F_MUL || op == OP_F_DIV || op == OP_CALL);
+          if (has_lhs) {
+            curr_inst->id = global_inst_id++;
+          }
         }
         print_inst(curr_inst, out);
         curr_inst = curr_inst->u.inst.nxt;
@@ -64,12 +72,10 @@ void print_inst(Value* inst, FILE* out) {
 
   // 如果这条指令有返回值 (比如加法、调用)，需要先打印左值 "t_x := "
   // 有些指令 (如 GOTO, RETURN, STORE) 没有左值结果
-  int has_lhs =
-      (inst->u.inst.opcode != OP_GOTO && inst->u.inst.opcode != OP_IF_GOTO &&
-       inst->u.inst.opcode != OP_RETURN && inst->u.inst.opcode != OP_STORE &&
-       inst->u.inst.opcode != OP_WRITE && inst->u.inst.opcode != OP_ARG &&
-       inst->u.inst.opcode != OP_PARAM && inst->u.inst.opcode != OP_DEC &&
-       inst->u.inst.opcode != OP_LABEL && inst->u.inst.opcode != OP_ASSIGN);
+  Opcode op = inst->u.inst.opcode;
+  int has_lhs = (op == OP_I_ADD || op == OP_I_SUB || op == OP_I_MUL ||
+                 op == OP_I_DIV || op == OP_F_ADD || op == OP_F_SUB ||
+                 op == OP_F_MUL || op == OP_F_DIV || op == OP_CALL);
 
   if (has_lhs) {
     print_value(inst, out);  // 打印它自己 (左值 t_x)
@@ -109,12 +115,14 @@ void print_inst(Value* inst, FILE* out) {
       print_value(ops[1], out);
       break;
     case OP_GET_ADDR:
-      fprintf(out, "&");
       print_value(ops[0], out);
+      fprintf(out, " := &");
+      print_value(ops[1], out);
       break;
     case OP_LOAD:
-      fprintf(out, "*");
       print_value(ops[0], out);
+      fprintf(out, " := *");
+      print_value(ops[1], out);
       break;
     case OP_STORE:
       // *x := y
@@ -149,7 +157,7 @@ void print_inst(Value* inst, FILE* out) {
       fprintf(out, "DEC ");
       print_value(ops[0], out);
       fprintf(out, " ");
-      print_value(ops[1], out);  // 或者不需要 #
+      fprintf(out, "%lu", ops[1]->u.int_val);
       break;
     case OP_ARG:
       fprintf(out, "ARG ");

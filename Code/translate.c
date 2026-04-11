@@ -6,6 +6,13 @@
 #include "common.h"
 #include "semantic.h"
 
+// 预留给编译器临时变量的 ID 分配器
+static int temp_var_id_counter = MAX_ID;
+
+// 深拷贝
+void build_memory_copy(IRBuilder* builder, Value* dest_addr, Value* src_addr,
+                       int size);
+
 IRModule* translate_program(ASTNode* root) {
   if (root == NULL) return NULL;
   IRModule* module = (IRModule*)malloc(sizeof(IRModule));
@@ -136,8 +143,25 @@ void translate_Dec(IRBuilder* builder, ASTNode* node) {
   // 有初始化赋值 (Dec: VarDec ASSIGNOP Exp)
   // 语义分析之后保证了初始化都是合法的
   if (node->child_count == 3) {
-    Value* exp_val = translate_Exp(builder, node->children[2]);
-    build_assign(builder, var_val, exp_val);
+    if (var_type->kind == TYPE_ARRAY || var_type->kind == TYPE_STRUCTURE) {
+      // --- 结构体/数组深拷贝初始化 ---
+      // 1. 获取源地址 src_addr (比如参数 a，translate_Exp 会返回它的地址 v9)
+      Value* src_addr = translate_Exp(builder, node->children[2]);
+
+      // 2. 获取目标地址 dest_addr (由于 var_val 是局部 DEC 分配的内存，必须用 &
+      // 取址)
+      Value* dest_addr =
+          get_or_create_var(builder, ++temp_var_id_counter, NULL);
+      build_get_addr(builder, dest_addr, var_val);
+
+      // 3. 内存搬运
+      int size = calculate_type_size(var_type);
+      build_memory_copy(builder, dest_addr, src_addr, size);
+    } else {
+      // --- 普通标量 (int, float) 初始化 ---
+      Value* exp_val = translate_Exp(builder, node->children[2]);
+      build_assign(builder, var_val, exp_val);
+    }
   }
 }
 
@@ -238,39 +262,30 @@ void translate_Cond(IRBuilder* builder, ASTNode* node, Value* true_bb,
                     Value* false_bb) {
   if (node == NULL || node->kind != NODE_EXP) return;
   // TODO: 补全表达式的处理
-  if (node->child_count == 3) {
-    switch (node->children[1]->kind) {
-      case TOKEN_RELOP: {
-        // Exp: Exp RELOP Exp
-        Value* lhs = translate_Exp(builder, node->children[0]);
-        Value* rhs = translate_Exp(builder, node->children[2]);
-        // 直接翻译
-        build_if_goto(builder, lhs, node->children[1]->val.relop_val, rhs,
-                      true_bb);
-        build_goto(builder, false_bb);
-        break;
-      }
-      case TOKEN_AND: {
-        // Exp: Exp AND Exp
-        Value* parent_func = builder->current_func;
-        Value* mid_bb = build_new_block(parent_func);
-        translate_Cond(builder, node->children[0], mid_bb, false_bb);
-        builder_set_insert_point(builder, mid_bb);
-        translate_Cond(builder, node->children[2], true_bb, false_bb);
-        break;
-      }
-      case TOKEN_OR: {
-        // Exp: Exp OR Exp
-        Value* parent_func = builder->current_func;
-        Value* mid_bb = build_new_block(parent_func);
-        translate_Cond(builder, node->children[0], true_bb, mid_bb);
-        builder_set_insert_point(builder, mid_bb);
-        translate_Cond(builder, node->children[2], true_bb, false_bb);
-        break;
-      }
-      default:
-        break;
-    }
+  // 1. 关系运算 (Exp RELOP Exp)
+  if (node->child_count == 3 && node->children[1]->kind == TOKEN_RELOP) {
+    Value* lhs = translate_Exp(builder, node->children[0]);
+    Value* rhs = translate_Exp(builder, node->children[2]);
+    build_if_goto(builder, lhs, node->children[1]->val.relop_val, rhs, true_bb);
+    build_goto(builder, false_bb);
+  }
+  // 2. 逻辑与 (Exp AND Exp)
+  else if (node->child_count == 3 && node->children[1]->kind == TOKEN_AND) {
+    Value* mid_bb = build_new_block(builder->current_func);
+    translate_Cond(builder, node->children[0], mid_bb, false_bb);
+    builder_set_insert_point(builder, mid_bb);
+    translate_Cond(builder, node->children[2], true_bb, false_bb);
+  }
+  // 3. 逻辑或 (Exp OR Exp)
+  else if (node->child_count == 3 && node->children[1]->kind == TOKEN_OR) {
+    Value* mid_bb = build_new_block(builder->current_func);
+    translate_Cond(builder, node->children[0], true_bb, mid_bb);
+    builder_set_insert_point(builder, mid_bb);
+    translate_Cond(builder, node->children[2], true_bb, false_bb);
+  }
+  // 4. 括号包裹 (LP Exp RP)
+  else if (node->child_count == 3 && node->children[0]->kind == TOKEN_LP) {
+    translate_Cond(builder, node->children[1], true_bb, false_bb);
   } else if (node->child_count == 2 && node->children[0]->kind == TOKEN_NOT) {
     translate_Cond(builder, node->children[1], false_bb, true_bb);
   } else {
@@ -281,9 +296,6 @@ void translate_Cond(IRBuilder* builder, ASTNode* node, Value* true_bb,
     build_goto(builder, false_bb);
   }
 }
-
-// 预留给编译器临时变量的 ID 分配器
-static int temp_var_id_counter = MAX_ID;
 
 // 辅助函数：专门用于计算左值（数组、结构体、变量）的内存地址
 Value* translate_LVal_Addr(IRBuilder* builder, ASTNode* node) {
@@ -334,6 +346,60 @@ Value* translate_LVal_Addr(IRBuilder* builder, ASTNode* node) {
   return NULL;
 }
 
+// 辅助函数：在 IR 中生成深拷贝的循环代码 (类似 memcpy)
+void build_memory_copy(IRBuilder* builder, Value* dest_addr, Value* src_addr,
+                       int size) {
+  if (size <= 0) return;
+
+  Value* parent_func = builder->current_func;
+
+  // 创建循环需要的三个基本块
+  Value* loop_cond = build_new_block(parent_func);
+  Value* loop_body = build_new_block(parent_func);
+  Value* loop_end = build_new_block(parent_func);
+
+  // 申请一个内部循环变量 offset，初始为 0
+  Value* offset = get_or_create_var(builder, ++temp_var_id_counter,
+                                    NULL);  // 类型可传 NULL，IR不管
+  build_assign(builder, offset, build_const_int(0));
+
+  // 跳入条件判断
+  build_goto(builder, loop_cond);
+  builder_set_insert_point(builder, loop_cond);
+
+  // 循环条件：IF offset < size GOTO loop_body ELSE GOTO loop_end
+  build_if_goto(builder, offset, RELOP_LT, build_const_int(size), loop_body);
+  build_goto(builder, loop_end);
+
+  // --- 循环体开始 ---
+  builder_set_insert_point(builder, loop_body);
+
+  // 1. 读取源数据：t_src = *(src_addr + offset)
+  Value* current_src_addr =
+      build_binary_op(builder, OP_I_ADD, src_addr, offset);
+  Value* temp_val = get_or_create_var(builder, ++temp_var_id_counter, NULL);
+  build_load(builder, temp_val, current_src_addr);
+
+  // 2. 写入目标地址：*(dest_addr + offset) = temp_val
+  Value* current_dest_addr =
+      build_binary_op(builder, OP_I_ADD, dest_addr, offset);
+  build_store(builder, current_dest_addr, temp_val);
+
+  // 3. offset = offset + 4 (步长为 4 字节)
+  Value* new_offset =
+      build_binary_op(builder, OP_I_ADD, offset, build_const_int(4));
+  build_assign(builder, offset, new_offset);
+
+  // 4. 回到条件判断
+  build_goto(builder, loop_cond);
+  // --- 循环体结束 ---
+
+  // 将插入点设置在循环结束之后，继续后续代码的翻译
+  builder_set_insert_point(builder, loop_end);
+}
+
+static int min(int x, int y) { return (x < y ? x : y); }
+
 Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
   if (node == NULL) return NULL;
   // 常量
@@ -359,20 +425,33 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
   if (node->child_count == 3 && node->children[1]->kind == TOKEN_ASSIGNOP) {
     Value* rhs = translate_Exp(builder, node->children[2]);
     ASTNode* lhs_node = node->children[0];
+    TypeKind tk = lhs_node->val_type->kind;
 
-    // 标量赋值：直接 ASSIGN
-    if (lhs_node->child_count == 1 && lhs_node->children[0]->kind == TOKEN_ID) {
-      Value* lhs_var =
-          get_or_create_var(builder, lhs_node->children[0]->ir_val_id,
-                            lhs_node->children[0]->val_type);
-      build_assign(builder, lhs_var, rhs);
+    // 数组或结构体赋值是深拷贝
+    if (tk == TYPE_ARRAY || tk == TYPE_STRUCTURE) {
+      Value* dest_addr = translate_LVal_Addr(builder, lhs_node);
+      Value* src_addr = translate_LVal_Addr(builder, node->children[2]);
+
+      int size = min(calculate_type_size(lhs_node->val_type),
+                     calculate_type_size(node->children[2]->val_type));
+      build_memory_copy(builder, dest_addr, src_addr, size);
+
+      return src_addr;
+    } else {
+      if (lhs_node->child_count == 1 &&
+          lhs_node->children[0]->kind == TOKEN_ID) {
+        Value* lhs_var =
+            get_or_create_var(builder, lhs_node->children[0]->ir_val_id,
+                              lhs_node->children[0]->val_type);
+        build_assign(builder, lhs_var, rhs);
+      }
+      // 数组或结构体字段赋值：需要计算地址并 STORE
+      else {
+        Value* lhs_addr = translate_LVal_Addr(builder, lhs_node);
+        build_store(builder, lhs_addr, rhs);
+      }
+      return rhs;  // 允许连续赋值 a = b = c
     }
-    // 数组或结构体字段赋值：需要计算地址并 STORE
-    else {
-      Value* lhs_addr = translate_LVal_Addr(builder, lhs_node);
-      build_store(builder, lhs_addr, rhs);
-    }
-    return rhs;  // 允许连续赋值 a = b = c
   }
 
   // 算数运算
@@ -435,6 +514,13 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
     } else if (strcmp(func_name, "write") == 0) {
       // write(x) -> AST 中 args 对应的是 Exp
       Value* arg_val = translate_Exp(builder, node->children[2]->children[0]);
+
+      if (arg_val->vk == VK_CONST_INT || arg_val->vk == VK_CONST_FLOAT) {
+        Value* temp_var =
+            get_or_create_var(builder, ++temp_var_id_counter, arg_val->tp);
+        build_assign(builder, temp_var, arg_val);
+        arg_val = temp_var;
+      }
       build_write(builder, arg_val);
       return build_const_int(0);
     } else {
@@ -494,9 +580,9 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
 void translate_Args(IRBuilder* builder, ASTNode* node) {
   if (node == NULL) return;
   // Args: Exp COMMA Args | Exp
-  Value* arg_val = translate_Exp(builder, node->children[0]);
   if (node->child_count == 3) {
     translate_Args(builder, node->children[2]);
   }
+  Value* arg_val = translate_Exp(builder, node->children[0]);
   build_arg(builder, arg_val);
 }

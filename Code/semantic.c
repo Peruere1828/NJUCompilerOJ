@@ -15,6 +15,31 @@
 // 当前解析的函数名称，用于语义报错
 static const char* current_parsing_function = NULL;
 
+static void insert_read_and_write() {
+  char* read_name = strdup("read");
+  Type* read_type = (Type*)malloc(sizeof(Type));
+  read_type->kind = TYPE_FUNCTION;
+  read_type->u.function.argc = 0;
+  read_type->u.function.args = NULL;
+  read_type->u.function.is_defined = 1;
+  read_type->u.function.ret_type = &type_int;
+
+  char* write_name = strdup("write");
+  Type* write_type = (Type*)malloc(sizeof(Type));
+  write_type->kind = TYPE_FUNCTION;
+  write_type->u.function.argc = 1;
+  write_type->u.function.args = (FieldList*)malloc(sizeof(FieldList));
+  write_type->u.function.args->type = &type_int;
+  write_type->u.function.args->nxt = NULL;
+  write_type->u.function.args->lineno = -1;
+  write_type->u.function.args->name = strdup("1_out_anon");
+  write_type->u.function.is_defined = 1;
+  write_type->u.function.ret_type = &type_int;
+
+  insert_symbol(read_name, read_type, -1);
+  insert_symbol(write_name, write_type, -1);
+}
+
 // 语义分析采用递归遍历AST的方式。
 // 通过访问各个节点，构造类型信息、函数参数列表、结构体成员列表，
 // 同时维护符号表进行作用域检查、重定义检查和类型一致性检查。
@@ -24,6 +49,9 @@ static const char* current_parsing_function = NULL;
 void semantic_analysis(ASTNode* root) {
   if (root == NULL) return;
   enter_scope();  // 全局作用域
+#if defined(STAGE_THREE)
+  insert_read_and_write();
+#endif
   visit_Program(root);
 #ifdef STAGE_TWO_REQ_ONE
   scan_function_declared_but_not_defined();

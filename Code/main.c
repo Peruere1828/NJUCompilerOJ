@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 #elif defined(STAGE_THREE)
-  if (argc <= 1) {
+  if (argc <= 2) {
     printf("Usage: %s <filename> <output_ir>\n", argv[0]);
     return 1;
   }
@@ -77,11 +77,15 @@ int main(int argc, char** argv) {
   }
 
   IRModule* ir_module = translate_program(root);
+#ifdef STAGE_THREE
+  FILE* out = fopen(argv[2], "w");
+#else
   FILE* out = stdout;
+#endif
   if (ir_module != NULL) {
     print_module(ir_module, out);
   }
 Failed:
-  
+
   return 0;
 }

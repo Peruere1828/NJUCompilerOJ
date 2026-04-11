@@ -56,6 +56,7 @@ int insert_symbol(const char* name, const Type* type, const int lineno) {
   new_node->depth = scope_stack_top->depth;
   new_node->lineno = lineno;
   new_node->ir_var_id = ++global_var_count;
+  new_node->is_param = 0;
 
   new_node->hash_nxt = hash_table[ind];
   hash_table[ind] = new_node;
