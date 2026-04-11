@@ -77,14 +77,22 @@ int main(int argc, char** argv) {
   }
 
   IRModule* ir_module = translate_program(root);
-#ifdef STAGE_THREE
+#if defined(STAGE_THREE)
   FILE* out = fopen(argv[2], "w");
+  if (!out) {
+    perror(argv[2]);
+    return 1;
+  }
 #else
   FILE* out = stdout;
 #endif
   if (ir_module != NULL) {
     print_module(ir_module, out);
   }
+#if defined(STAGE_THREE)
+  fclose(out);
+#endif
+
 Failed:
 
   return 0;
