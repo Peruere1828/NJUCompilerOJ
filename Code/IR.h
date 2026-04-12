@@ -158,6 +158,14 @@ struct Value {
       int num_preds;
       Value** succs;
       int num_succs;
+
+      // 支配树相关
+      int rpo_idx;        // 逆后序编号（用于比较大小）
+      Value* idom;        // 指向它的直接支配者 (IDom)
+      Value** idom_kids;  // 它的支配树子节点列表，重命名时会用到
+      int num_idom_kids;
+      Value** df;  // 支配边界集合 (DF)
+      int num_df;
     } bb;
 
     // 函数
@@ -200,5 +208,7 @@ Value* create_value(ValueKind vk, Type* tp);
 void add_use(Value* def, Value* user);
 
 void build_CFG(Value* func);
+
+void build_IDomTree(Value* func);
 
 #endif

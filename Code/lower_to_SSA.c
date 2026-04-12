@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -149,4 +150,138 @@ void build_CFG(Value* func) {
   dfs_bb(func->u.func.bb_head);
 
   remove_dead_blocks(func);
+}
+
+static Value* rpo_dfs_ptr[MAX_ID];
+static int dfn;
+
+static void rpo_dfs(Value* cur_bb) {
+  if (!cur_bb || vis_bb[cur_bb->u.bb.bb_id]) return;
+  vis_bb[cur_bb->u.bb.bb_id] = 1;
+  for (int i = 0; i < cur_bb->u.bb.num_succs; ++i) {
+    rpo_dfs(cur_bb->u.bb.succs[i]);
+  }
+  rpo_dfs_ptr[++dfn] = cur_bb;
+}
+
+// 数组原地反转 [l, r] 区间
+static void reverse(Value* arr[], int l, int r) {
+  while (l < r) {
+    Value* tmp = arr[l];
+    arr[l] = arr[r];
+    arr[r] = tmp;
+    l++;
+    r--;
+  }
+}
+
+// 辅助函数：在支配树上向上回溯，寻找两个基本块的最近公共祖先
+static Value* intersect(Value* b1, Value* b2) {
+  Value* finger1 = b1;
+  Value* finger2 = b2;
+
+  while (finger1 != finger2) {
+    // 谁的 RPO 编号更大（说明在图里越靠后/树里越靠下），谁就往上爬
+    while (finger1->u.bb.rpo_idx > finger2->u.bb.rpo_idx) {
+      finger1 = finger1->u.bb.idom;
+    }
+    while (finger2->u.bb.rpo_idx > finger1->u.bb.rpo_idx) {
+      finger2 = finger2->u.bb.idom;
+    }
+  }
+  return finger1;
+}
+
+// 将基本块 target 加入到 cur_bb 的 df 集合中（保证不重复）
+static void add_to_df(Value* cur_bb, Value* target) {
+  if (!cur_bb || !target) return;
+  // 检查是否已经存在
+  for (int i = 0; i < cur_bb->u.bb.num_df; ++i) {
+    if (cur_bb->u.bb.df[i] == target) {
+      return;
+    }
+  }
+
+  cur_bb->u.bb.df = (Value**)realloc(
+      cur_bb->u.bb.df, sizeof(Value*) * (cur_bb->u.bb.num_df + 1));
+  cur_bb->u.bb.df[cur_bb->u.bb.num_df++] = target;
+}
+
+void build_IDomTree(Value* func) {
+  // 计算逆后序
+  memset(vis_bb, 0, sizeof(vis_bb));
+  dfn = 0;
+  rpo_dfs(func->u.func.bb_head);
+  reverse(rpo_dfs_ptr, 1, dfn);
+  for (int i = 1; i <= dfn; ++i) {
+    rpo_dfs_ptr[i]->u.bb.rpo_idx = i;
+    rpo_dfs_ptr[i]->u.bb.idom = NULL;
+  }
+
+  Value* entry_bb = rpo_dfs_ptr[1];
+  entry_bb->u.bb.idom = entry_bb;
+
+  int changed = 1;
+  while (changed) {
+    changed = 0;
+    for (int i = 2; i <= dfn; ++i) {
+      Value* b = rpo_dfs_ptr[i];
+      Value* new_idom = NULL;
+      int first_processed_idx = -1;
+      for (int j = 0; j < b->u.bb.num_preds; ++j) {  //初始参照
+        Value* p = b->u.bb.preds[j];
+        if (p->u.bb.idom != NULL) {
+          new_idom = p;
+          first_processed_idx = j;
+          break;
+        }
+      }
+
+      assert(new_idom != NULL);
+
+      for (int j = 0; j < b->u.bb.num_preds; ++j) {
+        if (j == first_processed_idx) continue;
+
+        Value* p = b->u.bb.preds[j];
+        if (p->u.bb.idom != NULL) {
+          new_idom = intersect(p, new_idom);
+        }
+      }
+
+      if (b->u.bb.idom != new_idom) {
+        b->u.bb.idom = new_idom;
+        changed = 1;
+      }
+    }
+  }
+
+  // 构建正向支配树边 idom_kids
+  for (int i = 2; i <= dfn; ++i) {
+    Value* b = rpo_dfs_ptr[i];
+    Value* parent = b->u.bb.idom;
+
+    parent->u.bb.idom_kids =
+        (Value**)realloc(parent->u.bb.idom_kids,
+                         sizeof(Value*) * (parent->u.bb.num_idom_kids + 1));
+    parent->u.bb.idom_kids[parent->u.bb.num_idom_kids++] = b;
+  }
+
+  // 计算 DF
+  memset(vis_bb, 0, sizeof(vis_bb));
+  // 对于每条p->b的CFG边，向上跳p，直到遇到idom[b]
+  // 反证法可以证明不会出现idom[b]和p在不同分支的情况
+  for (int i = 1; i <= dfn; ++i) {
+    Value* b = rpo_dfs_ptr[i];
+    // 剪枝：只有拥有多个前驱的块，才可能是别人的支配边界
+    if (b->u.bb.num_preds >= 2) {
+      for (int j = 0; j < b->u.bb.num_preds; ++j) {
+        Value* p = b->u.bb.preds[j];
+        Value* cur = p;
+        while (cur != NULL && cur != b->u.bb.idom) {
+          add_to_df(cur, b);
+          cur = cur->u.bb.idom;
+        }
+      }
+    }
+  }
 }

@@ -80,6 +80,7 @@ int main(int argc, char** argv) {
   Value* cur = ir_module->func_list;
   while (cur) {
     build_CFG(cur);
+    build_IDomTree(cur);
     cur = cur->u.func.next_func;
   }
   if (ir_module != NULL) {
