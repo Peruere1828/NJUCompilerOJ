@@ -1,0 +1,152 @@
+#include <stdlib.h>
+#include <string.h>
+
+#include "IR.h"
+#include "IRbuilder.h"
+
+static int vis_bb[MAX_ID];
+
+static void add_cfg_edge(Value* pred, Value* succ) {
+  if (!pred || !succ) return;
+
+  pred->u.bb.succs = (Value**)realloc(
+      pred->u.bb.succs, sizeof(Value*) * (pred->u.bb.num_succs + 1));
+  pred->u.bb.succs[pred->u.bb.num_succs++] = succ;
+
+  succ->u.bb.preds = (Value**)realloc(
+      succ->u.bb.preds, sizeof(Value*) * (succ->u.bb.num_preds + 1));
+  succ->u.bb.preds[succ->u.bb.num_preds++] = pred;
+}
+
+static void dfs_bb(Value* cur_bb) {
+  if (!cur_bb || vis_bb[cur_bb->u.bb.bb_id]) return;
+  vis_bb[cur_bb->u.bb.bb_id] = 1;
+
+  Value* cur_inst = cur_bb->u.bb.inst_head;
+  int has_unconditional_jump = 0;
+
+  while (cur_inst != NULL) {
+    if (cur_inst->u.inst.opcode == OP_GOTO) {
+      Value* succ = cur_inst->u.inst.ops[0];
+      add_cfg_edge(cur_bb, succ);
+      dfs_bb(succ);
+      has_unconditional_jump = 1;
+      break;  // GOTO 是无条件跳转，其后面的块内指令属于死代码，停止处理
+    } else if (cur_inst->u.inst.opcode == OP_IF_GOTO) {
+      Value* succ = cur_inst->u.inst.ops[2];
+      add_cfg_edge(cur_bb, succ);
+      dfs_bb(succ);
+      // IF_GOTO 只是分叉，依然要继续看下一条指令
+    } else if (cur_inst->u.inst.opcode == OP_RETURN) {
+      has_unconditional_jump = 1;
+      break;  // RETURN 同样截断流向
+    }
+    cur_inst = cur_inst->u.inst.nxt;
+  }
+
+  // 如果一个块执行到底也没有 GOTO 或 RETURN，它会自动执行到物理上的下一个块
+  if (!has_unconditional_jump && cur_bb->u.bb.next_bb) {
+    add_cfg_edge(cur_bb, cur_bb->u.bb.next_bb);
+    dfs_bb(cur_bb->u.bb.next_bb);
+  }
+}
+
+static Value* get_actual_target(Value* bb) {
+  if (!bb) return NULL;
+  if (vis_bb[bb->u.bb.bb_id]) return NULL;  // 防止遇到 L1: GOTO L1 形成的死循环
+
+  Value* inst = bb->u.bb.inst_head;
+  Value* jump_target = NULL;
+  int has_side_effect = 0;
+
+  while (inst) {
+    Opcode op = inst->u.inst.opcode;
+    // 如果块内有除了 LABEL 和 GOTO 以外的指令，说明它不是空块，有副作用
+    if (op != OP_LABEL && op != OP_GOTO) {
+      has_side_effect = 1;
+      break;
+    }
+    if (op == OP_GOTO) {
+      jump_target = inst->u.inst.ops[0];
+    }
+    inst = inst->u.inst.nxt;
+  }
+
+  // 如果这是一个纯纯的空块，并且有明确的跳出目标
+  if (!has_side_effect && jump_target) {
+    vis_bb[bb->u.bb.bb_id] = 1;
+    Value* final_target = get_actual_target(jump_target);
+    vis_bb[bb->u.bb.bb_id] = 0;
+    return final_target ? final_target : jump_target;
+  }
+  return NULL;
+}
+
+static void optimize_jumps(Value* func) {
+  Value* cur_bb = func->u.func.bb_head;
+  while (cur_bb) {
+    Value* inst = cur_bb->u.bb.inst_head;
+    while (inst) {
+      if (inst->u.inst.opcode == OP_GOTO) {
+        memset(vis_bb, 0, sizeof(vis_bb));
+        Value* new_target = get_actual_target(inst->u.inst.ops[0]);
+        if (new_target) inst->u.inst.ops[0] = new_target;
+      } else if (inst->u.inst.opcode == OP_IF_GOTO) {
+        memset(vis_bb, 0, sizeof(vis_bb));
+        Value* new_target = get_actual_target(inst->u.inst.ops[2]);
+        if (new_target) inst->u.inst.ops[2] = new_target;
+      }
+      inst = inst->u.inst.nxt;
+    }
+    cur_bb = cur_bb->u.bb.next_bb;
+  }
+}
+
+static void remove_dead_blocks(Value* func) {
+  Value* cur = func->u.func.bb_head;
+  Value* prev = NULL;
+  while (cur) {
+    if (!vis_bb[cur->u.bb.bb_id]) {
+      // 从链表中彻底摘除这个未被访问到的死块 (比如 return 之后的 label)
+      Value* dead = cur;
+      if (prev) {
+        prev->u.bb.next_bb = cur->u.bb.next_bb;
+      } else {
+        func->u.func.bb_head = cur->u.bb.next_bb;
+      }
+      if (func->u.func.bb_tail == dead) {
+        func->u.func.bb_tail = prev;
+      }
+      cur = cur->u.bb.next_bb;
+      /// BUG: 考虑到玩具编译器，放弃free
+    } else {
+      prev = cur;
+      cur = cur->u.bb.next_bb;
+    }
+  }
+}
+
+void build_CFG(Value* func) {
+  memset(vis_bb, 0, sizeof(vis_bb));
+
+  Value* bb = func->u.func.bb_head;
+  while (bb) {
+    bb->u.bb.num_preds = 0;
+    bb->u.bb.num_succs = 0;
+    if (bb->u.bb.preds) {
+      free(bb->u.bb.preds);
+      bb->u.bb.preds = NULL;
+    }
+    if (bb->u.bb.succs) {
+      free(bb->u.bb.succs);
+      bb->u.bb.succs = NULL;
+    }
+    bb = bb->u.bb.next_bb;
+  }
+  optimize_jumps(func);
+
+  memset(vis_bb, 0, sizeof(vis_bb));
+  dfs_bb(func->u.func.bb_head);
+
+  remove_dead_blocks(func);
+}

@@ -77,6 +77,11 @@ int main(int argc, char** argv) {
     perror(argv[2]);
     return 1;
   }
+  Value* cur = ir_module->func_list;
+  while (cur) {
+    build_CFG(cur);
+    cur = cur->u.func.next_func;
+  }
   if (ir_module != NULL) {
     print_module(ir_module, out);
   }

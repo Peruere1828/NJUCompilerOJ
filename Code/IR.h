@@ -199,4 +199,6 @@ Value* create_value(ValueKind vk, Type* tp);
 // 指令 user 使用了数据源 def
 void add_use(Value* def, Value* user);
 
+void build_CFG(Value* func);
+
 #endif
