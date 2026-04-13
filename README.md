@@ -2,18 +2,16 @@
 
 选做部分用宏区分，详见 `config.h`。
 
-我仅完成**我拿到的任务要求**中的必做任务与**指定选做任务**，对于要求明确禁止实现的其余选做任务，**即便代码中存在相关实现，我也不保证其正确性。** 代码中所有与要求可能存在冲突的内容，均已通过 `FEAT:` 标记注明。
-
 ## 环境搭建
 
 我提供了 `Dockerfile` 用于搭建实验环境。
 
-可以参考如下命令为自己和队友搭建实验环境，之后队友可以通过 `ssh` 访问主机的 2345 端口进入实验容器。
+可以参考如下命令为自己和队友搭建实验环境，之后自己可以在 VSCode 中先 `ssh` 连接主机，再附加到容器；队友可以通过 `ssh` 直接访问主机的 2345 端口进入实验容器。
 
 ```bash
 docker build --network host -t compiler-oj-env .
-docker run -id --name my-lab --network host -v ~/compiler-oj/lab_my:/workspace compiler-oj-env /bin/bash
-docker run -d --name teammate-lab --network host -v ~/compiler-oj/lab_teammate:/workspace compiler-oj-env /usr/sbin/sshd -D -p 2345
+docker run -id --name my-lab --network host --restart unless-stopped -v ~/compiler-oj/lab_my:/workspace compiler-oj-env /bin/bash
+docker run -d --name teammate-lab --network host --restart unless-stopped -v ~/compiler-oj/lab_teammate:/workspace compiler-oj-env /usr/sbin/sshd -D -p 2345
 ```
 
 注意：`Dockerfile` 中额外下载了 `PrinceXML`，用于在 VSCode 中用 Markdown 相关插件导出 pdf。如果没有需要可以删去相关命令。
