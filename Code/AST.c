@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "common.h"
 #include "config.h"
@@ -12,13 +13,12 @@ ASTNode* root = NULL;
 ASTNode* create_AST_node(NodeKind kind, const char* name, int child_count,
                          ...) {
   ASTNode* node = (ASTNode*)malloc(sizeof(ASTNode));
+  memset(node, 0, sizeof(ASTNode));
   node->kind = kind;
   node->name = strdup(name);
   node->child_count = child_count;
   if (child_count > 0) {
     node->children = (ASTNode**)malloc(sizeof(ASTNode*) * child_count);
-  } else {
-    node->children = NULL;
   }
   va_list args;
   va_start(args, child_count);
@@ -35,36 +35,16 @@ ASTNode* create_AST_node(NodeKind kind, const char* name, int child_count,
       break;
     }
   }
-  node->ir_val_id = 0;
-  node->val_type = NULL;
-  node->is_param = 0;
   return node;
 }
 
 ASTNode* create_token_node(NodeKind kind, const char* name, int lineno) {
   ASTNode* node = (ASTNode*)malloc(sizeof(ASTNode));
+  memset(node, 0, sizeof(ASTNode));
   node->kind = kind;
   node->name = strdup(name);
   node->lineno = lineno;
-  node->child_count = 0;
-  node->children = NULL;
-  node->ir_val_id = 0;
-  node->val_type = NULL;
-  node->is_param = 0;
   return node;
-}
-
-extern Type type_int;
-extern Type type_float;
-extern int compare_two_types(Type* t1, Type* t2);
-
-void debug_ast(ASTNode* node) {
-  if (node == NULL) return;
-  if (node->ir_val_id) printf(" id=%d", node->ir_val_id);
-  if (node->val_type) {
-    if (compare_two_types(&type_int, node->val_type)) printf(" type=int");
-    if (compare_two_types(&type_float, node->val_type)) printf(" type=float");
-  }
 }
 
 void print_AST(ASTNode* node, int depth) {
@@ -78,13 +58,11 @@ void print_AST(ASTNode* node, int depth) {
   if (node->kind < TOKEN_INT) {
     // 语法单元
     printf("%s (%d)\n", node->name, node->lineno);
-    debug_ast(node);
   } else {
     // 词法单元
     printf("%s", node->name);
     if (node->kind == TOKEN_ID || node->kind == TOKEN_TYPE) {
       printf(": %s", node->val.str_val);
-      debug_ast(node);
     } else if (node->kind == TOKEN_INT) {
       printf(": %lu", node->val.int_val);
     } else if (node->kind == TOKEN_FLOAT) {

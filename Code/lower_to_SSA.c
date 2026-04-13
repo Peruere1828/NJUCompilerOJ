@@ -285,3 +285,8 @@ void build_IDomTree(Value* func) {
     }
   }
 }
+
+void build_phi(Value* func) {
+  memset(vis_bb, 0, sizeof(vis_bb));
+  //
+}

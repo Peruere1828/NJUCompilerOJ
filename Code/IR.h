@@ -45,6 +45,7 @@ v_1_2 := t_1
 这个阶段涉及的字段应当重新strdup
 
 先翻译成TAC格式，再做CFG，计算支配树得到SSA
+TODO: 添加SSA回到TAC的支持，以及读入TAC的支持
 */
 
 #ifndef IR_H
@@ -111,6 +112,8 @@ struct Value {
   Type* tp;
   Use* use_list;
 
+  // 如果 vk == VK_VAR，这里存的就是 v_xxx 的编号
+  // 如果 vk == VK_INST，这里存的就是 t_xxx 的编号
   int id;
 
   union {
@@ -118,16 +121,10 @@ struct Value {
     unsigned long int_val;
     float float_val;
 
-    // 局部变量
-    int var_id;
-
     // 全局变量
     struct {
-      int var_id;
       Value* next_global;  // 用于串联到 IRModule
     } global_var;
-
-    // 在语义分析阶段给所有局部变量和全局变量分配了唯一var_id
 
     // 指令
     struct {
@@ -180,6 +177,14 @@ struct Value {
 
       Value* next_func;  // 串联在 IRModule 的 func_list 中
     } func;
+
+    // phi节点
+    struct {
+      Value* dst;
+      Value** prev_value;
+      Value** prev_bb;
+      int num_prev;
+    } phi;
   } u;
 };
 

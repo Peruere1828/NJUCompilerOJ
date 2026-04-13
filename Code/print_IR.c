@@ -46,18 +46,6 @@ void print_module(IRModule* module, FILE* out) {
       // 遍历块内所有指令
       Value* curr_inst = curr_bb->u.bb.inst_head;
       while (curr_inst) {
-        // 给指令分配临时 ID 用于打印
-        if (curr_inst->vk == VK_INST) {
-          Opcode op = curr_inst->u.inst.opcode;
-          // 只有算数运算和 CALL 没有传入 dest，它们自身代表临时值，需要分配 t
-          // 编号
-          int has_lhs = (op == OP_I_ADD || op == OP_I_SUB || op == OP_I_MUL ||
-                         op == OP_I_DIV || op == OP_F_ADD || op == OP_F_SUB ||
-                         op == OP_F_MUL || op == OP_F_DIV || op == OP_CALL);
-          if (has_lhs) {
-            curr_inst->id = global_inst_id++;
-          }
-        }
         print_inst(curr_inst, out);
         curr_inst = curr_inst->u.inst.nxt;
       }
@@ -190,17 +178,17 @@ void print_value(Value* val, FILE* out) {
   if (!val) return;
   switch (val->vk) {
     case VK_CONST_INT:
-      fprintf(out, "#%ld", val->u.int_val);  // 常量前加 # 符号
+      fprintf(out, "#%ld", val->u.int_val);
       break;
     case VK_CONST_FLOAT:
       fprintf(out, "#%f", val->u.float_val);
       break;
     case VK_VAR:
       // 局部变量打印为 v_id
-      fprintf(out, "v%d", val->u.var_id);
+      fprintf(out, "v%d", val->id);
       break;
     case VK_INST:
-      // 指令的结果打印为 t_id (需要你在 Value 里加一个 id 字段)
+      // 指令的结果打印为 t_id
       fprintf(out, "t%d", val->id);
       break;
     case VK_BB:

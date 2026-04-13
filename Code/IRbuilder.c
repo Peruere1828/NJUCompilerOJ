@@ -6,11 +6,14 @@
 
 #include "common.h"
 
+int global_var_counter = 0;   // 专门给 VK_VAR 分配 v_id
+int global_inst_counter = 0;  // 专门给 VK_INST 分配 t_id
+
 void init_builder(IRBuilder* builder, IRModule* module) {
   builder->current_module = module;
   builder->current_func = NULL;
   builder->insert_block = NULL;
-  for (int i = 0; i < 2 * MAX_ID; ++i) {
+  for (int i = 0; i < MAX_ID; ++i) {
     builder->var_values[i] = NULL;
   }
 }
@@ -46,19 +49,26 @@ void append_inst(IRBuilder* builder, Value* inst) {
   }
 }
 
-Value* get_or_create_var(IRBuilder* builder, int var_id, Type* tp) {
-  if (var_id < 0 || var_id >= 2 * MAX_ID) return NULL;
+// 对前端得到的稀疏的全局唯一ir_val_id离散化映射到Value
+Value* map_declare_var(IRBuilder* builder, int frontend_id, Type* tp) {
+  Value* var = create_value(VK_VAR, tp);
+  var->id = ++global_var_counter;
 
-  // 命中缓存，直接返回之前的 Value
-  if (builder->var_values[var_id] != NULL) {
-    return builder->var_values[var_id];
-  }
+  builder->var_values[frontend_id] = var;
+  return var;
+}
 
-  // 没命中，创建新的局部变量坑位
-  Value* var_val = create_value(VK_VAR, tp);
-  var_val->u.var_id = var_id;
-  builder->var_values[var_id] = var_val;
-  return var_val;
+Value* map_lookup_var(IRBuilder* builder, int frontend_id) {
+  Value* var = builder->var_values[frontend_id];
+  assert(var != NULL);
+  return var;
+}
+
+// 创建临时变量，临时变量不在var_values表里
+Value* create_temp_var(Type* tp) {
+  Value* var = create_value(VK_VAR, tp);
+  var->id = ++global_var_counter;
+  return var;
 }
 
 Value* get_or_create_func(IRModule* module, const char* name, Type* ret_type) {
@@ -120,6 +130,7 @@ Value* build_binary_op(IRBuilder* builder, Opcode op, Value* lhs, Value* rhs) {
   inst->u.inst.opcode = op;
   inst->u.inst.num_ops = 2;
   inst->u.inst.ops = (Value**)malloc(sizeof(Value*) * 2);
+  inst->id = ++global_inst_counter;
 
   inst->u.inst.ops[0] = lhs;
   inst->u.inst.ops[1] = rhs;
@@ -286,6 +297,7 @@ Value* build_call(IRBuilder* builder, Value* func_val) {
   Value* inst = create_value(VK_INST, ret_type);
   inst->u.inst.opcode = OP_CALL;
   inst->u.inst.num_ops = 1;
+  inst->id = ++global_inst_counter;
   inst->u.inst.ops = (Value**)malloc(sizeof(Value*) * 1);
 
   inst->u.inst.ops[0] = func_val;

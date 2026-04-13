@@ -87,7 +87,9 @@ typedef struct ASTNode {
   int child_count;
 
   Type* val_type;
+  // 在AST构建中基于作用域情况（全局/嵌套域）分配一个全局唯一id
   int ir_val_id;
+  
   int is_param;
 } ASTNode;
 

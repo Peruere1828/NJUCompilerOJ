@@ -116,7 +116,7 @@ ASTNode* get_id_node_from_vardec(ASTNode* node) {
   return node;
 }
 
-// helper function：专门用于在形参入表后，遍历 FunDec 子树回填 ir_val_id
+// helper function：专门用于在形参入表后，遍历 FunDec 子树回填相关信息
 /// TODO: 可以更优雅地实现，让insert_symbol直接返回SymbolNode*，避免多次lookup
 static void backpatch_param_ir_id(ASTNode* node) {
   if (node == NULL) return;

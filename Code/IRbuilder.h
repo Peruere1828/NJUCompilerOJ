@@ -9,9 +9,9 @@
 // --- 构建器上下文 ---
 typedef struct IRBuilder {
   IRModule* current_module;
-  Value* current_func;  // 当前正在插入的函数 (VK_FUNC)
-  Value* insert_block;  // 当前正在插入指令的基本块 (VK_BB)
-  Value* var_values[MAX_ID * 2];
+  Value* current_func;        // 当前正在插入的函数 (VK_FUNC)
+  Value* insert_block;        // 当前正在插入指令的基本块 (VK_BB)
+  Value* var_values[MAX_ID];  // 存储对应VK_VAR的Value*
 } IRBuilder;
 
 // 将生成的指令插入到线性 TAC 链表中
@@ -26,7 +26,9 @@ void builder_set_insert_point(IRBuilder* builder, Value* bb);
 Value* build_const_int(unsigned long val);
 Value* build_const_float(float val);
 Value* build_new_block(Value* parent_func);  // 创建基本块
-Value* get_or_create_var(IRBuilder* builder, int var_id, Type* tp);
+Value* map_declare_var(IRBuilder* builder, int frontend_id, Type* tp);
+Value* map_lookup_var(IRBuilder* builder, int frontend_id);
+Value* create_temp_var(Type* tp);
 Value* get_or_create_func(IRModule* module, const char* name, Type* ret_type);
 
 // --- 指令生成 (自动插入到 insert_block 并维护 Use) ---

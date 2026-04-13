@@ -84,7 +84,7 @@ void translate_VarList_Params(IRBuilder* builder, ASTNode* node) {
   ASTNode* param_dec = node->children[0];
   ASTNode* id_node = get_id_node_from_vardec(param_dec->children[1]);
   Value* param_var =
-      get_or_create_var(builder, id_node->ir_val_id, id_node->val_type);
+      map_declare_var(builder, id_node->ir_val_id, id_node->val_type);
   build_param(builder, param_var);
   /// FEAT: 这里变量用值传递，数组和结构体都是指针传递
   if (node->child_count == 3) {
@@ -130,9 +130,8 @@ void translate_Dec(IRBuilder* builder, ASTNode* node) {
   ASTNode* vardec_node = node->children[0];
   ASTNode* id_node = get_id_node_from_vardec(vardec_node);
 
-  // 从缓存中获取/创建这个局部变量对应的 VK_VAR
   Value* var_val =
-      get_or_create_var(builder, id_node->ir_val_id, id_node->val_type);
+      map_declare_var(builder, id_node->ir_val_id, id_node->val_type);
 
   Type* var_type = id_node->val_type;
   if (var_type->kind == TYPE_ARRAY || var_type->kind == TYPE_STRUCTURE) {
@@ -150,8 +149,7 @@ void translate_Dec(IRBuilder* builder, ASTNode* node) {
 
       // 2. 获取目标地址 dest_addr (由于 var_val 是局部 DEC 分配的内存，必须用 &
       // 取址)
-      Value* dest_addr =
-          get_or_create_var(builder, ++temp_var_id_counter, NULL);
+      Value* dest_addr = create_temp_var(NULL);
       build_get_addr(builder, dest_addr, var_val);
 
       // 3. 内存搬运
@@ -303,8 +301,7 @@ Value* translate_LVal_Addr(IRBuilder* builder, ASTNode* node) {
 
   if (node->child_count == 1 && node->children[0]->kind == TOKEN_ID) {
     ASTNode* id_node = node->children[0];
-    Value* var_val =
-        get_or_create_var(builder, id_node->ir_val_id, id_node->val_type);
+    Value* var_val = map_lookup_var(builder, id_node->ir_val_id);
 
     TypeKind tk = id_node->val_type->kind;
 
@@ -315,8 +312,7 @@ Value* translate_LVal_Addr(IRBuilder* builder, ASTNode* node) {
     }
     // 否则（局部申请的数组/结构体），必须通过 GET_ADDR(&) 提取首地址
     else {
-      Value* addr_temp =
-          get_or_create_var(builder, ++temp_var_id_counter, NULL);
+      Value* addr_temp = create_temp_var(NULL);
       build_get_addr(builder, addr_temp, var_val);
       return addr_temp;
     }
@@ -344,7 +340,7 @@ Value* translate_LVal_Addr(IRBuilder* builder, ASTNode* node) {
     return build_binary_op(builder, OP_I_ADD, base_addr, offset_val);
   } else if (node->child_count >= 3 && node->children[0]->kind == TOKEN_ID &&
              node->children[1]->kind == TOKEN_LP) {
-              // 函数类型
+    // 函数类型
     return translate_Exp(builder, node);
   }
   return NULL;
@@ -363,8 +359,7 @@ void build_memory_copy(IRBuilder* builder, Value* dest_addr, Value* src_addr,
   Value* loop_end = build_new_block(parent_func);
 
   // 申请一个内部循环变量 offset，初始为 0
-  Value* offset = get_or_create_var(builder, ++temp_var_id_counter,
-                                    NULL);  // 类型可传 NULL，IR不管
+  Value* offset = create_temp_var(NULL);
   build_assign(builder, offset, build_const_int(0));
 
   // 跳入条件判断
@@ -381,7 +376,7 @@ void build_memory_copy(IRBuilder* builder, Value* dest_addr, Value* src_addr,
   // 1. 读取源数据：t_src = *(src_addr + offset)
   Value* current_src_addr =
       build_binary_op(builder, OP_I_ADD, src_addr, offset);
-  Value* temp_val = get_or_create_var(builder, ++temp_var_id_counter, NULL);
+  Value* temp_val = create_temp_var(NULL);
   build_load(builder, temp_val, current_src_addr);
 
   // 2. 写入目标地址：*(dest_addr + offset) = temp_val
@@ -422,7 +417,7 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
         id_node->val_type->kind == TYPE_STRUCTURE) {
       return translate_LVal_Addr(builder, node);
     }
-    return get_or_create_var(builder, id_node->ir_val_id, id_node->val_type);
+    return map_lookup_var(builder, id_node->ir_val_id);
   }
 
   // 赋值
@@ -445,8 +440,7 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
       if (lhs_node->child_count == 1 &&
           lhs_node->children[0]->kind == TOKEN_ID) {
         Value* lhs_var =
-            get_or_create_var(builder, lhs_node->children[0]->ir_val_id,
-                              lhs_node->children[0]->val_type);
+            map_lookup_var(builder, lhs_node->children[0]->ir_val_id);
         build_assign(builder, lhs_var, rhs);
       }
       // 数组或结构体字段赋值：需要计算地址并 STORE
@@ -511,8 +505,7 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
     // write 函数包含一个 int 类型的参数（即要输出的整数值），
     // 返回值也为 int 型（固定返回 0）
     if (strcmp(func_name, "read") == 0) {
-      Value* temp_dest =
-          get_or_create_var(builder, ++temp_var_id_counter, node->val_type);
+      Value* temp_dest = create_temp_var(&type_int);
       build_read(builder, temp_dest);
       return temp_dest;
     } else if (strcmp(func_name, "write") == 0) {
@@ -520,8 +513,7 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
       Value* arg_val = translate_Exp(builder, node->children[2]->children[0]);
 
       if (arg_val->vk == VK_CONST_INT || arg_val->vk == VK_CONST_FLOAT) {
-        Value* temp_var =
-            get_or_create_var(builder, ++temp_var_id_counter, arg_val->tp);
+        Value* temp_var = create_temp_var(arg_val->tp);
         build_assign(builder, temp_var, arg_val);
         arg_val = temp_var;
       }
@@ -546,8 +538,7 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
 
     // 如果访问的结果是基础类型，作为右值我们需要加载它的值（LOAD）
     if (node->val_type->kind == TYPE_BASIC) {
-      Value* temp_dest =
-          get_or_create_var(builder, ++temp_var_id_counter, node->val_type);
+      Value* temp_dest = create_temp_var(node->val_type);
       build_load(builder, temp_dest, addr);
       return temp_dest;
     }
@@ -559,8 +550,7 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
                                   node->children[1]->kind == TOKEN_OR ||
                                   node->children[1]->kind == TOKEN_RELOP)) ||
       (node->child_count == 2 && node->children[0]->kind == TOKEN_NOT)) {
-    Value* temp =
-        get_or_create_var(builder, ++temp_var_id_counter, node->val_type);
+    Value* temp = create_temp_var(node->val_type);
     Value* true_bb = build_new_block(builder->current_func);
     Value* false_bb = build_new_block(builder->current_func);
     Value* next_bb = build_new_block(builder->current_func);
