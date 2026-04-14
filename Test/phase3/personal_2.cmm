@@ -1,0 +1,22 @@
+int mod(int a, int b) {
+    if (b == 0) return 0;
+    return a - (a / b) * b;
+}
+
+int qpow(int a, int n) {
+    int mod_number = 97;
+    int ans = 1;
+    while (n) {
+        if (mod(n,2) == 1) ans = mod(ans * a, mod_number);
+        a = mod(a * a, mod_number);
+        n = n / 2;
+    }
+    return ans;
+}
+
+int main() {
+    int a, n;
+    a = read();
+    n = read();
+    write(qpow(a, n));
+}

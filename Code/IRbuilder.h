@@ -9,9 +9,9 @@
 // --- 构建器上下文 ---
 typedef struct IRBuilder {
   IRModule* current_module;
-  Value* current_func;        // 当前正在插入的函数 (VK_FUNC)
-  Value* insert_block;        // 当前正在插入指令的基本块 (VK_BB)
-  Value* var_values[MAX_ID];  // 存储对应VK_VAR的Value*
+  Value* current_func;  // 当前正在插入的函数 (VK_FUNC)
+  Value* insert_block;  // 当前正在插入指令的基本块 (VK_BB)
+  Value* var_values[MAX_ID + 1];  // 存储对应VK_VAR的Value*
 } IRBuilder;
 
 // 将生成的指令插入到线性 TAC 链表中
