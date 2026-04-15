@@ -104,7 +104,9 @@ typedef enum {
   OP_PARAM,
 
   OP_READ,
-  OP_WRITE
+  OP_WRITE,
+
+  OP_PHI  // 把SSA的phi节点视作特殊的OP
 } Opcode;
 
 struct Value {
@@ -127,6 +129,9 @@ struct Value {
     } global_var;
 
     // 指令
+    // PHI视为特殊的指令，复用ops数组来表示其参数
+    // 其中偶数索引 ops[0], ops[2]... 存传入的 Value，
+    // 奇数索引 ops[1], ops[3]... 存对应的来源 Basic Block
     struct {
       Opcode opcode;
       // 操作数数组
@@ -177,14 +182,6 @@ struct Value {
 
       Value* next_func;  // 串联在 IRModule 的 func_list 中
     } func;
-
-    // phi节点
-    struct {
-      Value* dst;
-      Value** prev_value;
-      Value** prev_bb;
-      int num_prev;
-    } phi;
   } u;
 };
 
@@ -212,8 +209,10 @@ Value* create_value(ValueKind vk, Type* tp);
 // 指令 user 使用了数据源 def
 void add_use(Value* def, Value* user);
 
-void build_CFG(Value* func);
+void lower_to_SSA(IRModule* ir_module);
 
+void build_CFG(Value* func);
 void build_IDomTree(Value* func);
+void insert_phi_nodes(Value* func);
 
 #endif

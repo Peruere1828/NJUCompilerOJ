@@ -292,9 +292,10 @@ Value* build_arg(IRBuilder* builder, Value* arg_val) {
 // 生成: t_n := CALL f
 // 注意：这个函数只生成 CALL 指令本身，不负责赋值给局部变量
 Value* build_call(IRBuilder* builder, Value* func_val) {
-  Type* ret_type = func_val->tp->u.function.ret_type;
+  Type* ret_type = func_val->tp;
 
   Value* inst = create_value(VK_INST, ret_type);
+
   inst->u.inst.opcode = OP_CALL;
   inst->u.inst.num_ops = 1;
   inst->id = ++global_inst_counter;

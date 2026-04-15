@@ -520,14 +520,14 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
       build_write(builder, arg_val);
       return build_const_int(0);
     } else {
-      // 常规函数调用
+      // 常规函数调用；函数调用的type是返回值
       Value* func_val = get_or_create_func(builder->current_module, func_name,
                                            node->val_type);
       if (node->child_count == 4) {
         translate_Args(builder, node->children[2]);
       }
-      return build_call(builder,
-                        func_val);  // Call 会返回包含结果的 Instruction Value
+      // Call 会返回包含结果的 Instruction Value
+      return build_call(builder, func_val);
     }
   }
 

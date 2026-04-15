@@ -5,6 +5,16 @@
 #include "IR.h"
 #include "IRbuilder.h"
 
+void lower_to_SSA(IRModule* ir_module) {
+  Value* cur = ir_module->func_list;
+  while (cur) {
+    build_CFG(cur);
+    build_IDomTree(cur);
+    insert_phi_nodes(cur);
+    cur = cur->u.func.next_func;
+  }
+}
+
 static int vis_bb[MAX_ID];
 
 static void add_cfg_edge(Value* pred, Value* succ) {
@@ -192,10 +202,10 @@ static Value* intersect(Value* b1, Value* b2) {
   return finger1;
 }
 
-// 将基本块 target 加入到 cur_bb 的 df 集合中（保证不重复）
+// 将基本块 target 加入到 cur_bb 的 df 集合中
 static void add_to_df(Value* cur_bb, Value* target) {
   if (!cur_bb || !target) return;
-  // 检查是否已经存在
+  // 去重
   for (int i = 0; i < cur_bb->u.bb.num_df; ++i) {
     if (cur_bb->u.bb.df[i] == target) {
       return;
@@ -286,7 +296,125 @@ void build_IDomTree(Value* func) {
   }
 }
 
-void build_phi(Value* func) {
-  memset(vis_bb, 0, sizeof(vis_bb));
-  //
+typedef struct BBNode {
+  Value* bb;
+  struct BBNode* next;
+} BBNode;
+
+// def_blocks[v_id] 存储了所有对 v_id 进行了赋值的基本块链表
+static BBNode* def_blocks[MAX_ID + 1];
+
+static void add_def_block(int v_id, Value* bb) {
+  BBNode* cur = def_blocks[v_id];
+  // 去重
+  while (cur != NULL) {
+    if (cur->bb == bb) return;
+    cur = cur->next;
+  }
+
+  BBNode* node = (BBNode*)malloc(sizeof(BBNode));
+  node->bb = bb;
+  node->next = def_blocks[v_id];
+  def_blocks[v_id] = node;
+}
+
+static int in_worklist[MAX_ID + 1];
+static int has_phi_inserted[MAX_ID + 1];
+
+// 收集可晋升变量及其定义点
+static void collect_def_sites(Value* func) {
+  // 清空def_blocks
+  for (int i = 0; i <= MAX_ID; ++i) {
+    BBNode* cur = def_blocks[i];
+    while (cur != NULL) {
+      BBNode* tmp = cur->next;
+      free(cur);
+      cur = tmp;
+    }
+    def_blocks[i] = NULL;
+  }
+
+  Value* cur_bb = func->u.func.bb_head;
+  while (cur_bb != NULL) {
+    Value* inst = cur_bb->u.bb.inst_head;
+
+    while (inst != NULL) {
+      Opcode op = inst->u.inst.opcode;
+
+      // 改变变量值的指令
+      // param相当于把外界变量赋值到函数内部
+      if (op == OP_ASSIGN || op == OP_READ || op == OP_PARAM) {
+        Value* dest = inst->u.inst.ops[0];
+
+        // 只有基础类型的 VK_VAR 可以晋升为 SSA
+        if (dest != NULL && dest->vk == VK_VAR && dest->tp &&
+            dest->tp->kind == TYPE_BASIC) {
+          add_def_block(dest->id, cur_bb);
+        }
+      }
+      inst = inst->u.inst.nxt;
+    }
+    cur_bb = cur_bb->u.bb.next_bb;
+  }
+}
+
+// 在bb这个块开头插入一个为v_id变量服务的phi节点
+static void insert_phi_at_head(Value* bb, int v_id) {
+  Value* phi_value = create_value(VK_INST, NULL);
+  phi_value->id = v_id;
+  phi_value->u.inst.opcode = OP_PHI;
+  phi_value->u.inst.parent_bb = bb;
+  if (bb->u.bb.inst_tail == NULL) {
+    bb->u.bb.inst_head = phi_value;
+    bb->u.bb.inst_tail = phi_value;
+    phi_value->u.inst.pre = NULL;
+    phi_value->u.inst.nxt = NULL;
+  } else {
+    phi_value->u.inst.nxt = bb->u.bb.inst_head;
+    phi_value->u.inst.pre = NULL;
+    bb->u.bb.inst_head->u.inst.pre = phi_value;
+    bb->u.bb.inst_head = phi_value;
+  }
+}
+
+void insert_phi_nodes(Value* func) {
+  collect_def_sites(func);
+
+  for (int v_id = 0; v_id <= MAX_ID; ++v_id) {
+    if (def_blocks[v_id] == NULL) continue;
+
+    memset(in_worklist, 0, sizeof(in_worklist));
+    memset(has_phi_inserted, 0, sizeof(has_phi_inserted));
+
+    // phi节点也是一次定义，可能会让后续块也要插入phi
+    // 因此用一个工作队列确保所有后续的块都能正确插入phi
+    // 同时需要保证一个变量的phi在一个块开头只能插入一次
+    Value* worklist[1000];
+    int head = 0, tail = 0;
+
+    BBNode* cur = def_blocks[v_id];
+    while (cur != NULL) {
+      worklist[tail++] = cur->bb;
+      in_worklist[cur->bb->u.bb.bb_id] = 1;
+      cur = cur->next;
+    }
+
+    while (head < tail) {
+      Value* x = worklist[head++];
+
+      for (int j = 0; j < x->u.bb.num_df; ++j) {
+        Value* y = x->u.bb.df[j];
+        int y_id = y->u.bb.bb_id;
+
+        if (!has_phi_inserted[y_id]) {
+          insert_phi_at_head(y, v_id);
+          has_phi_inserted[y_id] = 1;
+          if (!in_worklist[y_id]) {
+            in_worklist[y_id] = 1;
+            worklist[tail++] = y;
+          }
+        }
+      }
+    }
+  }
 }
