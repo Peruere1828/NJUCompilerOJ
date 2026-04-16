@@ -5,6 +5,10 @@
 #include "IRbuilder.h"
 #include "translate.h"
 
+#if defined(DEBUG) && defined(STAGE_THREE)
+#define PRINT_DEBUG
+#endif
+
 // 为所有指令生成 ID（可以在生成指令时做，也可以在打印前统一做）
 int global_inst_id = 1;
 
@@ -167,6 +171,11 @@ void print_inst(Value* inst, FILE* out) {
       fprintf(out, "WRITE ");
       print_value(ops[0], out);
       break;
+#ifdef PRINT_DEBUG
+    case OP_PHI:
+      fprintf(out, "v_%d PHI", inst->id);
+      break;
+#endif
     default:
       fprintf(out, "UNKNOWN_INST");
       break;
@@ -186,10 +195,22 @@ void print_value(Value* val, FILE* out) {
     case VK_VAR:
       // 局部变量打印为 v_id
       fprintf(out, "v%d", val->id);
+#ifdef PRINT_DEBUG
+      if (val->tp && val->tp->kind == TYPE_BASIC) {
+        fprintf(out, " BASICv");
+      } else if (!val->tp) {
+        fprintf(out, " UKE_TYPE");
+      }
+#endif
       break;
     case VK_INST:
       // 指令的结果打印为 t_id
       fprintf(out, "t%d", val->id);
+#ifdef PRINT_DEBUG
+      if (val->tp && val->tp->kind == TYPE_BASIC) {
+        fprintf(out, " BASICi");
+      }
+#endif
       break;
     case VK_BB:
       // 基本块作为标号打印

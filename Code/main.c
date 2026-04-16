@@ -43,11 +43,13 @@ int main(int argc, char** argv) {
   // 将 Flex 的输入流重定向为该文件
   yyin = f;
 
+#ifdef STAGE_ONE
 #ifdef DEBUG
   printf("========== DEBUG MODE ON ==========\n");
   yydebug = 1;  // 让 Bison 输出 Reduce/Shift 的推导 Trace
 #else
   yydebug = 0;
+#endif
 #endif
 
   int result = yyparse();

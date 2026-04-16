@@ -36,9 +36,9 @@ def run_cmd(cmd, step_name):
     print(f"\n[{step_name}] Executing: {cmd}")
     result = subprocess.run(cmd, shell=True, text=True)
     if result.returncode != 0:
-        print(f" {step_name} failed!")
+        print(f"[{step_name}] FAILED!")
         sys.exit(1)
-    print(f" {step_name} passed.")
+    print(f"[{step_name}] PASSED.")
 
 def rewrite_config(active_stage, active_reqs):
     """通过全量字符串覆盖生成干净的 config.h"""
@@ -73,17 +73,23 @@ def rewrite_config(active_stage, active_reqs):
         f.write("\n".join(lines))
 
 def compile_parser():
-    build_cmd = "cd Code && make > build.log 2>&1 && cp parser ../ && cd .. && chmod +x parser"
+    build_cmd = "cd Code && make > /dev/null && cp parser ../ && make clean > /dev/null && cd .. && chmod +x parser"
     run_cmd(build_cmd, "Compilation")
 
 def run_test(stage_idx, req_idx):
     test_dir = f"lab{stage_idx}"
+    
+    # 使用 (...) 打包命令，并使用 >> 追加到根目录的 build.log
     if stage_idx == 1:
-        test_cmd = f"cd ./test_framework/{test_dir} && python3 test.py -p ../../parser -g {req_idx} && cd ../../"
+        test_cmd = f"(cd ./test_framework/{test_dir} && python3 test.py -p ../../parser -g {req_idx}) >> build.log 2>&1"
     elif stage_idx == 2:
-        test_cmd = f"cd ./test_framework/{test_dir} && python3 test.py -p ../../parser -g {req_idx} && cd ../../"
+        test_cmd = f"(cd ./test_framework/{test_dir} && python3 test.py -p ../../parser -g {req_idx}) >> build.log 2>&1"
     elif stage_idx == 3:
-        return
+        if req_idx == 1 or req_idx == 2:
+            test_cmd = f"(cd ./test_framework/{test_dir} && ./run.sh -r ../../parser -e extend{req_idx} -c) >> build.log 2>&1"
+        else:
+            test_cmd = f"(cd ./test_framework/{test_dir} && ./run.sh -r ../../parser -e both -ac) >> build.log 2>&1"
+            
     run_cmd(test_cmd, f"Test Stage {stage_idx} Req {req_idx}")
 
 def main():
