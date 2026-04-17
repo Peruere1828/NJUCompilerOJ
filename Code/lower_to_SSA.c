@@ -343,7 +343,7 @@ static void collect_def_sites(Value* func) {
 
       // 改变变量值的指令
       // param相当于把外界变量赋值到函数内部
-      if (op == OP_ASSIGN || op == OP_READ || op == OP_PARAM) {
+      if (op == OP_ASSIGN || op == OP_PARAM) {
         Value* dest = inst->u.inst.ops[0];
 
         // 只有基础类型的 VK_VAR 可以晋升为 SSA

@@ -33,4 +33,6 @@ void translate_Cond(IRBuilder* builder, ASTNode* node, Value* true_bb,
 // 逆序处理实参并生成 ARG 指令
 void translate_Args(IRBuilder* builder, ASTNode* node);
 
+extern int MIDEND_ERROR;
+
 #endif

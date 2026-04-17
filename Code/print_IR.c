@@ -65,13 +65,20 @@ void print_inst(Value* inst, FILE* out) {
   // 如果这条指令有返回值 (比如加法、调用)，需要先打印左值 "t_x := "
   // 有些指令 (如 GOTO, RETURN, STORE) 没有左值结果
   Opcode op = inst->u.inst.opcode;
-  int has_lhs = (op == OP_I_ADD || op == OP_I_SUB || op == OP_I_MUL ||
-                 op == OP_I_DIV || op == OP_F_ADD || op == OP_F_SUB ||
-                 op == OP_F_MUL || op == OP_F_DIV || op == OP_CALL);
+  int has_lhs =
+      (op == OP_I_ADD || op == OP_I_SUB || op == OP_I_MUL || op == OP_I_DIV ||
+       op == OP_F_ADD || op == OP_F_SUB || op == OP_F_MUL || op == OP_F_DIV ||
+       op == OP_CALL || op == OP_GET_ADDR || op == OP_LOAD);
 
   if (has_lhs) {
     print_value(inst, out);  // 打印它自己 (左值 t_x)
     fprintf(out, " := ");
+  }
+  if (op == OP_PHI) {
+#ifdef PRINT_DEBUG
+    fprintf(out, "v_%d PHI\n", inst->id);
+#endif
+    return;
   }
 
   Value** ops = inst->u.inst.ops;  // 操作数数组
@@ -107,14 +114,12 @@ void print_inst(Value* inst, FILE* out) {
       print_value(ops[1], out);
       break;
     case OP_GET_ADDR:
+      fprintf(out, "&");
       print_value(ops[0], out);
-      fprintf(out, " := &");
-      print_value(ops[1], out);
       break;
     case OP_LOAD:
+      fprintf(out, "*");
       print_value(ops[0], out);
-      fprintf(out, " := *");
-      print_value(ops[1], out);
       break;
     case OP_STORE:
       // *x := y
@@ -131,8 +136,6 @@ void print_inst(Value* inst, FILE* out) {
       // IF x [relop] y GOTO z
       fprintf(out, "IF ");
       print_value(ops[0], out);
-      // 这里需要一个函数把 RelopKind 转换成字符串, 比如
-      // print_relop(inst->u.inst.rk, out);
       fprintf(out, " %s ", relop_to_str(inst->u.inst.rk));
       print_value(ops[1], out);
       fprintf(out, " GOTO ");
@@ -143,9 +146,6 @@ void print_inst(Value* inst, FILE* out) {
       print_value(ops[0], out);
       break;
     case OP_DEC:
-      // ops[0]是变量，ops[1]是大小常量
-      // 注意 DEC 的规范是: DEC x [size]，这里假设不经过 has_lhs 的 " := " 打印
-      // 如果前面的 has_lhs 包含了 OP_DEC，需要调整。DEC 应该没有赋值符。
       fprintf(out, "DEC ");
       print_value(ops[0], out);
       fprintf(out, " ");
@@ -165,17 +165,12 @@ void print_inst(Value* inst, FILE* out) {
       break;
     case OP_READ:
       fprintf(out, "READ ");
-      print_value(ops[0], out);  // 注意 READ规范可能是 READ x
+      print_value(inst, out);
       break;
     case OP_WRITE:
       fprintf(out, "WRITE ");
       print_value(ops[0], out);
       break;
-#ifdef PRINT_DEBUG
-    case OP_PHI:
-      fprintf(out, "v_%d PHI", inst->id);
-      break;
-#endif
     default:
       fprintf(out, "UNKNOWN_INST");
       break;

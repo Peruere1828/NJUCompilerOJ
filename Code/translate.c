@@ -299,9 +299,7 @@ Value* translate_LVal_Addr(IRBuilder* builder, ASTNode* node) {
     }
     // 否则（局部申请的数组/结构体），必须通过 GET_ADDR(&) 提取首地址
     else {
-      Value* addr_temp = create_temp_var(NULL);
-      build_get_addr(builder, addr_temp, var_val);
-      return addr_temp;
+      return build_get_addr(builder, var_val);
     }
   } else if (node->child_count == 4 && node->children[1]->kind == TOKEN_LB) {
     // Exp: Exp1 LB Exp2 RB
@@ -436,9 +434,7 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
     // write 函数包含一个 int 类型的参数（即要输出的整数值），
     // 返回值也为 int 型（固定返回 0）
     if (strcmp(func_name, "read") == 0) {
-      Value* temp_dest = create_temp_var(&type_int);
-      build_read(builder, temp_dest);
-      return temp_dest;
+      return build_read(builder, &type_int);
     } else if (strcmp(func_name, "write") == 0) {
       // write(x) -> AST 中 args 对应的是 Exp
       Value* arg_val = translate_Exp(builder, node->children[2]->children[0]);
@@ -469,9 +465,7 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
 
     // 如果访问的结果是基础类型，作为右值我们需要加载它的值（LOAD）
     if (node->val_type->kind == TYPE_BASIC) {
-      Value* temp_dest = create_temp_var(node->val_type);
-      build_load(builder, temp_dest, addr);
-      return temp_dest;
+      return build_load(builder, addr, node->val_type);
     }
     // 如果结果依然是一个多维数组或结构体，它将衰减为指针（地址）直接传递
     return addr;

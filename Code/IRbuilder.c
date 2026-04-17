@@ -216,32 +216,30 @@ Value* build_dec(IRBuilder* builder, Value* var_val, int size) {
 }
 
 // 取地址: x := &y
-Value* build_get_addr(IRBuilder* builder, Value* dest, Value* src) {
-  Value* inst = create_value(VK_INST, dest->tp);
+Value* build_get_addr(IRBuilder* builder, Value* src) {
+  Value* inst = create_value(VK_INST, src->tp);
+  inst->id = ++global_inst_counter;
   inst->u.inst.opcode = OP_GET_ADDR;
-  inst->u.inst.num_ops = 2;
-  inst->u.inst.ops = (Value**)malloc(sizeof(Value*) * 2);
+  inst->u.inst.num_ops = 1;
+  inst->u.inst.ops = (Value**)malloc(sizeof(Value*) * 1);
 
-  inst->u.inst.ops[0] = dest;
-  inst->u.inst.ops[1] = src;  // 被取址的变量
+  inst->u.inst.ops[0] = src;
 
-  add_use(dest, inst);
   add_use(src, inst);
   append_inst(builder, inst);
   return inst;
 }
 
 // 解引用读取: x := *y (从地址 y 读取数据到 x)
-Value* build_load(IRBuilder* builder, Value* dest, Value* src_addr) {
-  Value* inst = create_value(VK_INST, dest->tp);
+Value* build_load(IRBuilder* builder, Value* src_addr, Type* tp) {
+  Value* inst = create_value(VK_INST, tp);
+  inst->id = ++global_inst_counter;
   inst->u.inst.opcode = OP_LOAD;
-  inst->u.inst.num_ops = 2;
-  inst->u.inst.ops = (Value**)malloc(sizeof(Value*) * 2);
+  inst->u.inst.num_ops = 1;
+  inst->u.inst.ops = (Value**)malloc(sizeof(Value*) * 1);
 
-  inst->u.inst.ops[0] = dest;
-  inst->u.inst.ops[1] = src_addr;  // 作为地址的变量
+  inst->u.inst.ops[0] = src_addr;
 
-  add_use(dest, inst);
   add_use(src_addr, inst);
   append_inst(builder, inst);
   return inst;
@@ -309,14 +307,13 @@ Value* build_call(IRBuilder* builder, Value* func_val) {
 }
 
 // 从控制台读取: READ x
-Value* build_read(IRBuilder* builder, Value* dest) {
-  Value* inst = create_value(VK_INST, dest->tp);
+Value* build_read(IRBuilder* builder, Type* tp) {
+  Value* inst = create_value(VK_INST, tp);
+  inst->id = ++global_inst_counter;
   inst->u.inst.opcode = OP_READ;
-  inst->u.inst.num_ops = 1;
-  inst->u.inst.ops = (Value**)malloc(sizeof(Value*) * 1);
-  inst->u.inst.ops[0] = dest;
+  inst->u.inst.num_ops = 0;
+  inst->u.inst.ops = NULL;
 
-  add_use(dest, inst);
   append_inst(builder, inst);
   return inst;
 }

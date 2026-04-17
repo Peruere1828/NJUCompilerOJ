@@ -38,8 +38,8 @@ Value* build_assign(IRBuilder* builder, Value* dest, Value* src);
 
 // 2. 内存类
 Value* build_dec(IRBuilder* builder, Value* var, int size);
-Value* build_get_addr(IRBuilder* builder, Value* dest, Value* src);
-Value* build_load(IRBuilder* builder, Value* dest, Value* src_addr);
+Value* build_get_addr(IRBuilder* builder, Value* src);
+Value* build_load(IRBuilder* builder, Value* src_addr, Type* tp);
 Value* build_store(IRBuilder* builder, Value* dest_addr, Value* src);
 
 // 3. 控制流类
@@ -52,7 +52,7 @@ Value* build_return(IRBuilder* builder, Value* ret_val);
 Value* build_param(IRBuilder* builder, Value* param_val);
 Value* build_arg(IRBuilder* builder, Value* arg_val);
 Value* build_call(IRBuilder* builder, Value* func_val);
-Value* build_read(IRBuilder* builder, Value* dest);
+Value* build_read(IRBuilder* builder, Type* tp);
 Value* build_write(IRBuilder* builder, Value* src);
 
 #endif
