@@ -8,10 +8,7 @@
 
 // 预留给编译器临时变量的 ID 分配器
 static int temp_var_id_counter = MAX_ID;
-
-// 深拷贝
-void build_memory_copy(IRBuilder* builder, Value* dest_addr, Value* src_addr,
-                       int size);
+int MIDEND_ERROR = 0;
 
 IRModule* translate_program(ASTNode* root) {
   if (root == NULL) return NULL;
@@ -142,21 +139,11 @@ void translate_Dec(IRBuilder* builder, ASTNode* node) {
   // 有初始化赋值 (Dec: VarDec ASSIGNOP Exp)
   // 语义分析之后保证了初始化都是合法的
   if (node->child_count == 3) {
+    // 按照要求，我们保证了不存在ARRAY类型和STRUCTURE类型的相互直接赋值
     if (var_type->kind == TYPE_ARRAY || var_type->kind == TYPE_STRUCTURE) {
-      // --- 结构体/数组深拷贝初始化 ---
-      // 1. 获取源地址 src_addr (比如参数 a，translate_Exp 会返回它的地址 v9)
-      Value* src_addr = translate_Exp(builder, node->children[2]);
-
-      // 2. 获取目标地址 dest_addr (由于 var_val 是局部 DEC 分配的内存，必须用 &
-      // 取址)
-      Value* dest_addr = create_temp_var(NULL);
-      build_get_addr(builder, dest_addr, var_val);
-
-      // 3. 内存搬运
-      int size = calculate_type_size(var_type);
-      build_memory_copy(builder, dest_addr, src_addr, size);
+      /// FEAT: 如果真存在这种赋值，无视并记录为错误
+      MIDEND_ERROR++;
     } else {
-      // --- 普通标量 (int, float) 初始化 ---
       Value* exp_val = translate_Exp(builder, node->children[2]);
       build_assign(builder, var_val, exp_val);
     }
@@ -346,57 +333,6 @@ Value* translate_LVal_Addr(IRBuilder* builder, ASTNode* node) {
   return NULL;
 }
 
-// 辅助函数：在 IR 中生成深拷贝的循环代码 (类似 memcpy)
-void build_memory_copy(IRBuilder* builder, Value* dest_addr, Value* src_addr,
-                       int size) {
-  if (size <= 0) return;
-
-  Value* parent_func = builder->current_func;
-
-  // 创建循环需要的三个基本块
-  Value* loop_cond = build_new_block(parent_func);
-  Value* loop_body = build_new_block(parent_func);
-  Value* loop_end = build_new_block(parent_func);
-
-  // 申请一个内部循环变量 offset，初始为 0
-  Value* offset = create_temp_var(NULL);
-  build_assign(builder, offset, build_const_int(0));
-
-  // 跳入条件判断
-  build_goto(builder, loop_cond);
-  builder_set_insert_point(builder, loop_cond);
-
-  // 循环条件：IF offset < size GOTO loop_body ELSE GOTO loop_end
-  build_if_goto(builder, offset, RELOP_LT, build_const_int(size), loop_body);
-  build_goto(builder, loop_end);
-
-  // --- 循环体开始 ---
-  builder_set_insert_point(builder, loop_body);
-
-  // 1. 读取源数据：t_src = *(src_addr + offset)
-  Value* current_src_addr =
-      build_binary_op(builder, OP_I_ADD, src_addr, offset);
-  Value* temp_val = create_temp_var(NULL);
-  build_load(builder, temp_val, current_src_addr);
-
-  // 2. 写入目标地址：*(dest_addr + offset) = temp_val
-  Value* current_dest_addr =
-      build_binary_op(builder, OP_I_ADD, dest_addr, offset);
-  build_store(builder, current_dest_addr, temp_val);
-
-  // 3. offset = offset + 4 (步长为 4 字节)
-  Value* new_offset =
-      build_binary_op(builder, OP_I_ADD, offset, build_const_int(4));
-  build_assign(builder, offset, new_offset);
-
-  // 4. 回到条件判断
-  build_goto(builder, loop_cond);
-  // --- 循环体结束 ---
-
-  // 将插入点设置在循环结束之后，继续后续代码的翻译
-  builder_set_insert_point(builder, loop_end);
-}
-
 static int min(int x, int y) { return (x < y ? x : y); }
 
 Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
@@ -426,16 +362,11 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
     ASTNode* lhs_node = node->children[0];
     TypeKind tk = lhs_node->val_type->kind;
 
-    // 数组或结构体赋值是深拷贝
+    // 按照要求，我们保证了不存在ARRAY类型和STRUCTURE类型的相互直接赋值
     if (tk == TYPE_ARRAY || tk == TYPE_STRUCTURE) {
-      Value* dest_addr = translate_LVal_Addr(builder, lhs_node);
-      Value* src_addr = translate_LVal_Addr(builder, node->children[2]);
-
-      int size = min(calculate_type_size(lhs_node->val_type),
-                     calculate_type_size(node->children[2]->val_type));
-      build_memory_copy(builder, dest_addr, src_addr, size);
-
-      return src_addr;
+      /// FEAT: 如果真存在这种赋值，无视并记录为错误
+      MIDEND_ERROR++;
+      return rhs;
     } else {
       if (lhs_node->child_count == 1 &&
           lhs_node->children[0]->kind == TOKEN_ID) {
