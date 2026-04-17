@@ -87,6 +87,18 @@ void translate_VarList_Params(IRBuilder* builder, ASTNode* node) {
   if (node->child_count == 3) {
     translate_VarList_Params(builder, node->children[2]);
   }
+#ifdef STAGE_THREE
+#ifndef STAGE_THREE_REQ_ONE
+  if (id_node->val_type->kind == TYPE_STRUCTURE) {
+    MIDEND_ERROR++;
+  }
+#endif
+#ifndef STAGE_THREE_REQ_TWO
+  if (id_node->val_type->kind == TYPE_ARRAY) {
+    MIDEND_ERROR++;
+  }
+#endif
+#endif
 }
 
 void translate_CompSt(IRBuilder* builder, ASTNode* node) {
@@ -129,8 +141,26 @@ void translate_Dec(IRBuilder* builder, ASTNode* node) {
 
   Value* var_val =
       map_declare_var(builder, id_node->ir_val_id, id_node->val_type);
-
   Type* var_type = id_node->val_type;
+
+#ifdef STAGE_THREE
+#ifndef STAGE_THREE_REQ_ONE
+  Type* base_type_check = var_type;
+  while (base_type_check != NULL && base_type_check->kind == TYPE_ARRAY) {
+    base_type_check = base_type_check->u.array.element_type;
+  }
+  if (base_type_check != NULL && base_type_check->kind == TYPE_STRUCTURE) {
+    MIDEND_ERROR++;
+  }
+#endif
+#ifndef STAGE_THREE_REQ_TWO
+  if (var_type->kind == TYPE_ARRAY &&
+      var_type->u.array.element_type->kind == TYPE_ARRAY) {
+    MIDEND_ERROR++;
+  }
+#endif
+#endif
+
   if (var_type->kind == TYPE_ARRAY || var_type->kind == TYPE_STRUCTURE) {
     int size = calculate_type_size(var_type);
     build_dec(builder, var_val, size);

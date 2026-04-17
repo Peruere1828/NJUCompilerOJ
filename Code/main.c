@@ -74,6 +74,16 @@ int main(int argc, char** argv) {
 #endif
 
   IRModule* ir_module = translate_program(root);
+  if (MIDEND_ERROR != 0) {
+    printf("ERROR: There are statements that we do not support.\n");
+#ifndef STAGE_THREE_REQ_ONE
+    printf("ERROR: There are structure variables or structure params.\n");
+#endif
+#ifndef STAGE_THREE_REQ_TWO
+    printf("ERROR: There are array params or high order variables.\n");
+#endif
+    goto Failed;
+  }
   FILE* out = fopen(argv[2], "w");
   if (!out) {
     perror(argv[2]);
