@@ -7,6 +7,7 @@
 
 extern int global_inst_counter;
 
+// 仅将TAC翻译为SSA，不优化
 void lower_to_SSA(IRModule* ir_module) {
   Value* cur = ir_module->func_list;
   while (cur) {
@@ -65,81 +66,6 @@ static void dfs_bb(Value* cur_bb) {
   }
 }
 
-static Value* get_actual_target(Value* bb) {
-  if (!bb) return NULL;
-  if (vis_bb[bb->u.bb.bb_id]) return NULL;  // 防止遇到 L1: GOTO L1 形成的死循环
-
-  Value* inst = bb->u.bb.inst_head;
-  Value* jump_target = NULL;
-  int has_side_effect = 0;
-
-  while (inst) {
-    Opcode op = inst->u.inst.opcode;
-    // 如果块内有除了 LABEL 和 GOTO 以外的指令，说明它不是空块，有副作用
-    if (op != OP_LABEL && op != OP_GOTO) {
-      has_side_effect = 1;
-      break;
-    }
-    if (op == OP_GOTO) {
-      jump_target = inst->u.inst.ops[0];
-    }
-    inst = inst->u.inst.nxt;
-  }
-
-  // 如果这是一个纯纯的空块，并且有明确的跳出目标
-  if (!has_side_effect && jump_target) {
-    vis_bb[bb->u.bb.bb_id] = 1;
-    Value* final_target = get_actual_target(jump_target);
-    vis_bb[bb->u.bb.bb_id] = 0;
-    return final_target ? final_target : jump_target;
-  }
-  return NULL;
-}
-
-static void optimize_jumps(Value* func) {
-  Value* cur_bb = func->u.func.bb_head;
-  while (cur_bb) {
-    Value* inst = cur_bb->u.bb.inst_head;
-    while (inst) {
-      if (inst->u.inst.opcode == OP_GOTO) {
-        memset(vis_bb, 0, sizeof(vis_bb));
-        Value* new_target = get_actual_target(inst->u.inst.ops[0]);
-        if (new_target) inst->u.inst.ops[0] = new_target;
-      } else if (inst->u.inst.opcode == OP_IF_GOTO) {
-        memset(vis_bb, 0, sizeof(vis_bb));
-        Value* new_target = get_actual_target(inst->u.inst.ops[2]);
-        if (new_target) inst->u.inst.ops[2] = new_target;
-      }
-      inst = inst->u.inst.nxt;
-    }
-    cur_bb = cur_bb->u.bb.next_bb;
-  }
-}
-
-static void remove_dead_blocks(Value* func) {
-  Value* cur = func->u.func.bb_head;
-  Value* prev = NULL;
-  while (cur) {
-    if (!vis_bb[cur->u.bb.bb_id]) {
-      // 从链表中彻底摘除这个未被访问到的死块 (比如 return 之后的 label)
-      Value* dead = cur;
-      if (prev) {
-        prev->u.bb.next_bb = cur->u.bb.next_bb;
-      } else {
-        func->u.func.bb_head = cur->u.bb.next_bb;
-      }
-      if (func->u.func.bb_tail == dead) {
-        func->u.func.bb_tail = prev;
-      }
-      cur = cur->u.bb.next_bb;
-      /// BUG: 考虑到玩具编译器，放弃free
-    } else {
-      prev = cur;
-      cur = cur->u.bb.next_bb;
-    }
-  }
-}
-
 void build_CFG(Value* func) {
   memset(vis_bb, 0, sizeof(vis_bb));
 
@@ -157,12 +83,7 @@ void build_CFG(Value* func) {
     }
     bb = bb->u.bb.next_bb;
   }
-  optimize_jumps(func);
-
-  memset(vis_bb, 0, sizeof(vis_bb));
   dfs_bb(func->u.func.bb_head);
-
-  remove_dead_blocks(func);
 }
 
 static Value* rpo_dfs_ptr[MAX_ID];
@@ -365,7 +286,7 @@ static void collect_def_sites(Value* func) {
 static void insert_phi_at_head(Value* bb, int v_id) {
   Value* phi_value = create_value(VK_INST, NULL);
   phi_value->id = ++global_inst_counter;
-  phi_value->u.inst.rk = v_id; // 暂且把原始id放在rk里
+  phi_value->u.inst.rk = v_id;  // 暂且把原始id放在rk里
   phi_value->u.inst.opcode = OP_PHI;
   phi_value->u.inst.parent_bb = bb;
   if (bb->u.bb.inst_tail == NULL) {
