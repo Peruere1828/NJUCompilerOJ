@@ -68,17 +68,11 @@ void print_inst(Value* inst, FILE* out) {
   int has_lhs =
       (op == OP_I_ADD || op == OP_I_SUB || op == OP_I_MUL || op == OP_I_DIV ||
        op == OP_F_ADD || op == OP_F_SUB || op == OP_F_MUL || op == OP_F_DIV ||
-       op == OP_CALL || op == OP_GET_ADDR || op == OP_LOAD);
+       op == OP_CALL || op == OP_GET_ADDR || op == OP_LOAD || op == OP_PHI);
 
   if (has_lhs) {
     print_value(inst, out);  // 打印它自己 (左值 t_x)
     fprintf(out, " := ");
-  }
-  if (op == OP_PHI) {
-#ifdef PRINT_DEBUG
-    fprintf(out, "v_%d PHI\n", inst->id);
-#endif
-    return;
   }
 
   Value** ops = inst->u.inst.ops;  // 操作数数组
@@ -171,10 +165,34 @@ void print_inst(Value* inst, FILE* out) {
       fprintf(out, "WRITE ");
       print_value(ops[0], out);
       break;
+    case OP_PHI:
+      fprintf(out, "PHI(");
+      for (int i = 0; i < inst->u.inst.num_ops; i += 2) {
+        if (i > 0) fprintf(out, ", ");
+        fprintf(out, "[");
+        print_value(ops[i], out);
+        fprintf(out, ", ");
+        print_value(ops[i + 1], out);
+        fprintf(out, "]");
+      }
+      fprintf(out, ")");
+      break;
     default:
       fprintf(out, "UNKNOWN_INST");
       break;
   }
+#ifdef PRINT_DEBUG
+  if (has_lhs && inst->use_list != NULL) {
+    fprintf(out, "  \t// uses: [");
+    Use* cur_use = inst->use_list;
+    while (cur_use != NULL) {
+      print_value(cur_use->user, out);  // 打印使用这条指令结果的下游指令
+      if (cur_use->nxt) fprintf(out, ", ");
+      cur_use = cur_use->nxt;
+    }
+    fprintf(out, "]");
+  }
+#endif
   fprintf(out, "\n");
 }
 

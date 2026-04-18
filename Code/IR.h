@@ -137,7 +137,9 @@ struct Value {
       // 操作数数组
       int num_ops;
       Value** ops;
-      RelopKind rk;  // 条件跳转的关系符号
+      // 条件跳转的关系符号
+      // 同时暂且把重命名前的原始id也放在rk里
+      RelopKind rk;
 
       // 归属的基本块，以及前后指令
       Value* parent_bb;
@@ -214,5 +216,6 @@ void lower_to_SSA(IRModule* ir_module);
 void build_CFG(Value* func);
 void build_IDomTree(Value* func);
 void insert_phi_nodes(Value* func);
+void rename_variables(Value* func);
 
 #endif

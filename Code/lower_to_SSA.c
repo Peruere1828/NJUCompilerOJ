@@ -5,12 +5,15 @@
 #include "IR.h"
 #include "IRbuilder.h"
 
+extern int global_inst_counter;
+
 void lower_to_SSA(IRModule* ir_module) {
   Value* cur = ir_module->func_list;
   while (cur) {
     build_CFG(cur);
     build_IDomTree(cur);
     insert_phi_nodes(cur);
+    rename_variables(cur);
     cur = cur->u.func.next_func;
   }
 }
@@ -361,7 +364,8 @@ static void collect_def_sites(Value* func) {
 // 在bb这个块开头插入一个为v_id变量服务的phi节点
 static void insert_phi_at_head(Value* bb, int v_id) {
   Value* phi_value = create_value(VK_INST, NULL);
-  phi_value->id = v_id;
+  phi_value->id = ++global_inst_counter;
+  phi_value->u.inst.rk = v_id; // 暂且把原始id放在rk里
   phi_value->u.inst.opcode = OP_PHI;
   phi_value->u.inst.parent_bb = bb;
   if (bb->u.bb.inst_tail == NULL) {
@@ -378,6 +382,7 @@ static void insert_phi_at_head(Value* bb, int v_id) {
 }
 
 void insert_phi_nodes(Value* func) {
+  // 由于不存在全局变量，所有的当前函数需要用的变量都应该在当前函数内
   collect_def_sites(func);
 
   for (int v_id = 0; v_id <= MAX_ID; ++v_id) {
@@ -417,4 +422,126 @@ void insert_phi_nodes(Value* func) {
       }
     }
   }
+}
+
+// 定义栈，封装成context使用
+typedef struct VersionNode {
+  Value* val;
+  struct VersionNode* next;
+} VersionNode;
+typedef struct {
+  VersionNode* stack_head[MAX_ID + 1];
+} RenameContext;
+static void push_value(RenameContext* ctx, int v_id, Value* val) {
+  VersionNode* node = (VersionNode*)malloc(sizeof(VersionNode));
+  node->val = val;
+  node->next = ctx->stack_head[v_id];
+  ctx->stack_head[v_id] = node;
+}
+static Value* top_value(RenameContext* ctx, int v_id) {
+  if (ctx->stack_head[v_id] == NULL) return NULL;
+  return ctx->stack_head[v_id]->val;
+}
+static void pop_value(RenameContext* ctx, int v_id) {
+  VersionNode* node = ctx->stack_head[v_id];
+  if (node != NULL) {
+    ctx->stack_head[v_id] = node->next;
+    free(node);
+  }
+}
+
+static void rename_dfs(RenameContext* ctx, Value* cur_bb) {
+  if (cur_bb == NULL || cur_bb->vk != VK_BB) return;
+  // 当前块中值的更新
+  int pushed_vids[MAX_ID + 1];
+  int push_count = 0;
+
+  // 遍历所有指令
+  Value* inst = cur_bb->u.bb.inst_head;
+  while (inst != NULL) {
+    Opcode opcode = inst->u.inst.opcode;
+    Value* nxt_inst = inst->u.inst.nxt;
+
+    // 更新use链
+    if (opcode != OP_PHI) {
+      for (int i = 0; i < inst->u.inst.num_ops; ++i) {
+        // 跳过 OP_ASSIGN 和 OP_PARAM 的左值
+        if (inst->u.inst.opcode == OP_ASSIGN && i == 0) continue;
+        if (inst->u.inst.opcode == OP_PARAM && i == 0) continue;
+
+        Value* op = inst->u.inst.ops[i];
+        if (op != NULL && op->vk == VK_VAR && op->tp &&
+            op->tp->kind == TYPE_BASIC) {
+          Value* latest = top_value(ctx, op->id);
+          if (latest != NULL) {
+            inst->u.inst.ops[i] = latest;
+            add_use(latest, inst);  // 建立 SSA 下的 Def-Use 链
+          }
+        }
+      }
+    }
+
+    if (opcode == OP_PHI) {
+      int v_id = inst->u.inst.rk;
+      push_value(ctx, v_id, inst);
+      pushed_vids[++push_count] = v_id;
+    } else if (opcode == OP_ASSIGN) {
+      Value* dest = inst->u.inst.ops[0];
+      if (dest != NULL && dest->vk == VK_VAR && dest->tp &&
+          dest->tp->kind == TYPE_BASIC) {
+        int v_id = dest->id;
+        Value* src = inst->u.inst.ops[1];  // src 已经被重命名了
+        push_value(ctx, v_id, src);
+        pushed_vids[++push_count] = v_id;
+        // 之后事实上就不需要这个赋值了（直接视为src对应的t_xx）
+        // 但在这里不消除原始的v_，留到DCE的时候消除
+      }
+    } else if (opcode == OP_PARAM) {
+      Value* dest = inst->u.inst.ops[0];
+      if (dest != NULL && dest->vk == VK_VAR && dest->tp &&
+          dest->tp->kind == TYPE_BASIC) {
+        int v_id = dest->id;
+        push_value(ctx, v_id, dest);
+        pushed_vids[++push_count] = v_id;
+      }
+    }
+
+    inst = nxt_inst;
+  }
+  // 填充phi节点
+  for (int i = 0; i < cur_bb->u.bb.num_succs; ++i) {
+    Value* succ_bb = cur_bb->u.bb.succs[i];
+    Value* p = succ_bb->u.bb.inst_head;
+    while (p != NULL && p->u.inst.opcode == OP_PHI) {
+      int v_id = p->u.inst.rk;
+      Value* latest = top_value(ctx, v_id);
+      if (latest != NULL) {
+        p->u.inst.ops = (Value**)realloc(
+            p->u.inst.ops, sizeof(Value*) * (p->u.inst.num_ops + 2));
+        p->u.inst.ops[p->u.inst.num_ops] = latest;
+        p->u.inst.ops[p->u.inst.num_ops + 1] = cur_bb;
+        p->u.inst.num_ops += 2;
+
+        add_use(latest, p);
+      }
+      p = p->u.inst.nxt;
+    }
+  }
+  // 递归
+  for (int i = 0; i < cur_bb->u.bb.num_idom_kids; ++i) {
+    rename_dfs(ctx, cur_bb->u.bb.idom_kids[i]);
+  }
+  // 出栈
+  for (int i = 1; i <= push_count; ++i) {
+    pop_value(ctx, pushed_vids[i]);
+  }
+}
+
+void rename_variables(Value* func) {
+  if (func == NULL || func->vk != VK_FUNCTION) return;
+
+  RenameContext ctx;
+  memset(ctx.stack_head, 0, sizeof(ctx.stack_head));
+
+  rename_dfs(&ctx, func->u.func.bb_head);
 }
