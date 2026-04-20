@@ -23,3 +23,22 @@ void add_use(Value* def, Value* user) {
   }
   def->use_list = u;
 }
+
+// 从 def 的 use_list 中，移除特定的 user
+void remove_use(Value* def, Value* user) {
+  if (def == NULL || def->use_list == NULL) return;
+  Use* cur = def->use_list;
+  while (cur != NULL) {
+    if (cur->user == user) {
+      if (cur->pre)
+        cur->pre->nxt = cur->nxt;
+      else
+        def->use_list = cur->nxt;
+
+      if (cur->nxt) cur->nxt->pre = cur->pre;
+      free(cur);
+      return;
+    }
+    cur = cur->nxt;
+  }
+}

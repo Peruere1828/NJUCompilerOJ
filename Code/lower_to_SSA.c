@@ -371,6 +371,20 @@ static void pop_value(RenameContext* ctx, int v_id) {
   }
 }
 
+/// BUG: 可能应该添加专门的default作为未初始化
+static Value* get_zero_value(Type* tp) {
+  if (tp && tp->kind == TYPE_BASIC && tp->u.basic == BASIC_FLOAT) {
+    Value* zero = create_value(VK_CONST_FLOAT, &type_float);
+    zero->u.float_val = 0.0f;
+    return zero;
+  } else {
+    // 默认回退到整数 0
+    Value* zero = create_value(VK_CONST_INT, &type_int);
+    zero->u.int_val = 0;
+    return zero;
+  }
+}
+
 static void rename_dfs(RenameContext* ctx, Value* cur_bb) {
   if (cur_bb == NULL || cur_bb->vk != VK_BB) return;
   // 当前块中值的更新
@@ -394,7 +408,12 @@ static void rename_dfs(RenameContext* ctx, Value* cur_bb) {
         if (op != NULL && op->vk == VK_VAR && op->tp &&
             op->tp->kind == TYPE_BASIC) {
           Value* latest = top_value(ctx, op->id);
-          if (latest != NULL) {
+          if (latest == NULL) {
+            // 默认给未初始化的变量赋 0
+            latest = get_zero_value(op->tp);
+          }
+          if (latest != op) {
+            remove_use(op, inst);
             inst->u.inst.ops[i] = latest;
             add_use(latest, inst);  // 建立 SSA 下的 Def-Use 链
           }
@@ -436,15 +455,16 @@ static void rename_dfs(RenameContext* ctx, Value* cur_bb) {
     while (p != NULL && p->u.inst.opcode == OP_PHI) {
       int v_id = p->u.inst.rk;
       Value* latest = top_value(ctx, v_id);
-      if (latest != NULL) {
-        p->u.inst.ops = (Value**)realloc(
-            p->u.inst.ops, sizeof(Value*) * (p->u.inst.num_ops + 2));
-        p->u.inst.ops[p->u.inst.num_ops] = latest;
-        p->u.inst.ops[p->u.inst.num_ops + 1] = cur_bb;
-        p->u.inst.num_ops += 2;
-
-        add_use(latest, p);
+      if (latest == NULL) {
+        latest = get_zero_value(p->tp);
       }
+      p->u.inst.ops = (Value**)realloc(
+          p->u.inst.ops, sizeof(Value*) * (p->u.inst.num_ops + 2));
+      p->u.inst.ops[p->u.inst.num_ops] = latest;
+      p->u.inst.ops[p->u.inst.num_ops + 1] = cur_bb;
+      p->u.inst.num_ops += 2;
+
+      add_use(latest, p);
       p = p->u.inst.nxt;
     }
   }

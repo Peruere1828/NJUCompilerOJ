@@ -210,6 +210,7 @@ typedef struct IRModule {
 Value* create_value(ValueKind vk, Type* tp);
 // 指令 user 使用了数据源 def
 void add_use(Value* def, Value* user);
+void remove_use(Value* def, Value* user);
 
 void lower_to_SSA(IRModule* ir_module);
 

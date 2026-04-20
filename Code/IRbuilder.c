@@ -150,7 +150,7 @@ Value* build_assign(IRBuilder* builder, Value* dest, Value* src) {
   inst->u.inst.ops[0] = dest;
   inst->u.inst.ops[1] = src;
 
-  add_use(dest, inst);
+  // add_use(dest, inst);
   add_use(src, inst);
   append_inst(builder, inst);
   return inst;

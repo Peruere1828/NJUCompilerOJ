@@ -6,6 +6,7 @@
 #include "semantic_error.h"
 #include "translate.h"
 #include "optimize_TAC.h"
+#include "destroy_SSA.h"
 
 extern FILE* yyin;
 extern int yylineno;
@@ -90,8 +91,9 @@ int main(int argc, char** argv) {
     perror(argv[2]);
     return 1;
   }
+  lower_to_SSA(ir_module);
+  destroy_SSA(ir_module);
   optimize_TAC(ir_module);
-  // lower_to_SSA(ir_module);
   if (ir_module != NULL) {
     print_module(ir_module, out);
   }
