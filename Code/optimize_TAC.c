@@ -173,12 +173,12 @@ int pass_dce(Value* func) {
 
       if (!has_side_effect) {
         Value* dest_val = NULL;
-        if (op == OP_ASSIGN || op == OP_DEC || op == OP_GET_ADDR ||
-            op == OP_LOAD) {
+        if (op == OP_ASSIGN || op == OP_DEC) {
           dest_val = inst->u.inst.ops[0];
         } else if (op == OP_I_ADD || op == OP_I_SUB || op == OP_I_MUL ||
                    op == OP_I_DIV || op == OP_F_ADD || op == OP_F_SUB ||
-                   op == OP_F_MUL || op == OP_F_DIV) {
+                   op == OP_F_MUL || op == OP_F_DIV || op == OP_GET_ADDR ||
+                   op == OP_LOAD) {
           dest_val = inst;
         }
 
