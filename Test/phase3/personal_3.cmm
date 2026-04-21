@@ -1,0 +1,19 @@
+int main() {
+    int a;
+    int b[5];
+    struct {
+        int x;
+        int y;
+        int z[3];
+    } s;
+    a = 10;
+    b[0] = a;
+    b[1] = 20;
+    s.x = 30;
+    s.y = 40;
+    s.z[0] = 50;
+    s.z[1] = b[0] + b[1];
+    s.z[2] = s.x + s.y;
+    write(s.z[2]);
+    return 0;
+}
