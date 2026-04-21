@@ -23,6 +23,7 @@ static int vis_bb[MAX_ID];
 
 static void add_cfg_edge(Value* pred, Value* succ) {
   if (!pred || !succ) return;
+  assert(pred->vk == VK_BB && succ->vk == VK_BB);
 
   pred->u.bb.succs = (Value**)realloc(
       pred->u.bb.succs, sizeof(Value*) * (pred->u.bb.num_succs + 1));

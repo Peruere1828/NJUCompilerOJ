@@ -9,15 +9,58 @@ extern int global_inst_counter;
 
 static void split_critical_edges(Value* func);
 static void remove_phi_nodes(Value* func);
+static void cleanup_dead_insts_and_rebuild_cfg(Value* func);
 
 // 仅将SSA转为TAC，不优化
 void destroy_SSA(IRModule* ir_module) {
   Value* cur = ir_module->func_list;
   while (cur) {
+    cleanup_dead_insts_and_rebuild_cfg(cur);
     split_critical_edges(cur);
     remove_phi_nodes(cur);
     cur = cur->u.func.next_func;
   }
+}
+
+static void cleanup_dead_insts_and_rebuild_cfg(Value* func) {
+  Value* bb = func->u.func.bb_head;
+  while (bb != NULL) {
+    Value* inst = bb->u.bb.inst_head;
+    int dead_zone = 0;
+    while (inst != NULL) {
+      Value* nxt = inst->u.inst.nxt;
+      if (dead_zone) {
+        // 从基本块中剔除指令
+        if (inst->u.inst.pre)
+          inst->u.inst.pre->u.inst.nxt = inst->u.inst.nxt;
+        else
+          bb->u.bb.inst_head = inst->u.inst.nxt;
+        if (inst->u.inst.nxt)
+          inst->u.inst.nxt->u.inst.pre = inst->u.inst.pre;
+        else
+          bb->u.bb.inst_tail = inst->u.inst.pre;
+
+        // 释放其持有的 Use，防止内存泄漏或干扰后续的 DCE
+        for (int i = 0; i < inst->u.inst.num_ops; i++) {
+          if (inst->u.inst.opcode == OP_ASSIGN && i == 0) continue;
+          Value* op = inst->u.inst.ops[i];
+          if (op != NULL && (op->vk == VK_VAR || op->vk == VK_INST)) {
+            remove_use(op, inst);
+          }
+        }
+      } else {
+        Opcode op = inst->u.inst.opcode;
+        // 遇到无条件跳转或返回后，后面的指令进入 dead_zone
+        if (op == OP_GOTO || op == OP_RETURN) {
+          dead_zone = 1;
+        }
+      }
+      inst = nxt;
+    }
+    bb = bb->u.bb.next_bb;
+  }
+  // 清理完虚假的 tail 指令后，重新构建准确的 CFG
+  build_CFG(func);
 }
 
 // 对于一条CFG边u->v，如果u的后继>=2且v的前驱>=2，此时phi节点的还原成赋值
@@ -41,7 +84,7 @@ static void split_critical_edges(Value* func) {
 
           mid_bb->u.bb.inst_head = goto_inst;
           mid_bb->u.bb.inst_tail = goto_inst;
-          add_use(succ_bb, goto_inst,0);
+          add_use(succ_bb, goto_inst, 0);
 
           Value* tail = cur_bb->u.bb.inst_tail;
           if (tail != NULL && tail->u.inst.opcode == OP_GOTO &&
@@ -149,7 +192,7 @@ static void remove_phi_nodes(Value* func) {
             copy_to_tmp->u.inst.ops[1] = src_val;
             copy_to_tmp->u.inst.parent_bb = pred_bb;
 
-            add_use(src_val, copy_to_tmp,1);
+            add_use(src_val, copy_to_tmp, 1);
             insert_inst_before(pred_bb, tail, copy_to_tmp);
 
             safe_srcs[i] = tmp_var;
@@ -171,7 +214,7 @@ static void remove_phi_nodes(Value* func) {
           final_assign->u.inst.ops[1] = safe_srcs[i];
           final_assign->u.inst.parent_bb = pred_bb;
 
-          add_use(safe_srcs[i], final_assign,1);
+          add_use(safe_srcs[i], final_assign, 1);
           insert_inst_before(pred_bb, tail, final_assign);
         }
       }
@@ -179,6 +222,10 @@ static void remove_phi_nodes(Value* func) {
       // 将这些 Phi 节点从当前块删除
       for (int i = 0; i < phi_count; ++i) {
         Value* phi = phi_insts[i];
+        for (int j = 0; j < phi->u.inst.num_ops; j += 2) {
+          remove_use(phi->u.inst.ops[j], phi);
+        }
+        
         if (phi->u.inst.pre)
           phi->u.inst.pre->u.inst.nxt = phi->u.inst.nxt;
         else

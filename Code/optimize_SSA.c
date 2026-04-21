@@ -1,5 +1,6 @@
 #include "optimize_SSA.h"
 
+#include <assert.h>
 #include <stdlib.h>
 
 #include "IRbuilder.h"
@@ -74,6 +75,7 @@ int pass_constant_propagation(Value* func) {
             res = val1 * val2;
           } else {  // op == OP_I_DIV
             // 我们忽略除零情况
+            if (val2 == 0) continue;
             res = val1 / val2;
             /// FEAT: 遵循irsim的行为，向负无穷取整
             int rem = val1 % val2;
@@ -100,6 +102,7 @@ int pass_constant_propagation(Value* func) {
             res = val1 * val2;
           } else {  // op == OP_F_DIV
             // 我们忽略除零情况
+            if (val2 == 0.0) continue;
             res = val1 / val2;
           }
           replace_inst_with_const_float(inst, res);
@@ -112,6 +115,73 @@ int pass_constant_propagation(Value* func) {
           changed = 1;
         } else if (arg1->vk == VK_CONST_FLOAT) {
           replace_inst_with_const_float(inst, arg1->u.float_val);
+          changed = 1;
+        }
+      } else if (op == OP_IF_GOTO) {
+        // IF arg1 rk arg2 THEN GOTO label
+        Value* arg1 = inst->u.inst.ops[0];
+        Value* arg2 = inst->u.inst.ops[1];
+        Value* label = inst->u.inst.ops[2];
+
+        // 仅当两个操作数都是常量时，进行控制流折叠
+        if ((arg1->vk == VK_CONST_INT && arg2->vk == VK_CONST_INT) ||
+            (arg1->vk == VK_CONST_FLOAT && arg2->vk == VK_CONST_FLOAT)) {
+          int is_true = 0;
+          RelopKind rk = inst->u.inst.rk;
+
+          // 在编译器中计算条件真假
+          if (arg1->vk == VK_CONST_INT) {
+            int v1 = arg1->u.int_val;
+            int v2 = arg2->u.int_val;
+            if (rk == RELOP_EQ)
+              is_true = (v1 == v2);
+            else if (rk == RELOP_NEQ)
+              is_true = (v1 != v2);
+            else if (rk == RELOP_GT)
+              is_true = (v1 > v2);
+            else if (rk == RELOP_LT)
+              is_true = (v1 < v2);
+            else if (rk == RELOP_GEQ)
+              is_true = (v1 >= v2);
+            else if (rk == RELOP_LEQ)
+              is_true = (v1 <= v2);
+          } else {
+            float v1 = arg1->u.float_val;
+            float v2 = arg2->u.float_val;
+            if (rk == RELOP_EQ)
+              is_true = (v1 == v2);
+            else if (rk == RELOP_NEQ)
+              is_true = (v1 != v2);
+            else if (rk == RELOP_GT)
+              is_true = (v1 > v2);
+            else if (rk == RELOP_LT)
+              is_true = (v1 < v2);
+            else if (rk == RELOP_GEQ)
+              is_true = (v1 >= v2);
+            else if (rk == RELOP_LEQ)
+              is_true = (v1 <= v2);
+          }
+
+          // 清理旧的 use_list 依赖 (无论真假，原操作数都不再被使用了)
+          remove_use(arg1, inst);
+          remove_use(arg2, inst);
+          remove_use(label, inst);
+          // 先断开 label，下面如果需要 GOTO 再重新以 index 0 挂载
+
+          if (is_true) {
+            // 条件恒为真，蜕变为无条件 GOTO
+            inst->u.inst.opcode = OP_GOTO;
+            inst->u.inst.num_ops = 1;
+            inst->u.inst.ops[0] = label;
+
+            // 重新挂载 label 的 use_list，因为它的 op_index 从 2 变成了 0
+            add_use(label, inst, 0);
+          } else {
+            // 条件恒为假，这条跳转是死代码，直接作废
+            inst->u.inst.opcode = OP_NOP;
+            inst->u.inst.num_ops = 0;
+          }
+
           changed = 1;
         }
       }
