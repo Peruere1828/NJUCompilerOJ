@@ -11,12 +11,13 @@ Value* create_value(ValueKind vk, Type* tp) {
   return v;
 }
 
-void add_use(Value* def, Value* user) {
+void add_use(Value* def, Value* user, int op_index) {
   if (def == NULL || user == NULL) return;
   Use* u = (Use*)malloc(sizeof(Use));
   u->def = def;
   u->user = user;
   u->nxt = def->use_list;
+  u->op_index = op_index;
   u->pre = NULL;
   if (def->use_list != NULL) {
     def->use_list->pre = u;

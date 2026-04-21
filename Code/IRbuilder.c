@@ -113,7 +113,7 @@ Value* build_new_block(Value* parent_func) {
   return bb_val;
 }
 
-Value* build_const_int(unsigned long val) {
+Value* build_const_int(int val) {
   Value* new_value = create_value(VK_CONST_INT, &type_int);
   new_value->u.int_val = val;
   return new_value;
@@ -135,14 +135,15 @@ Value* build_binary_op(IRBuilder* builder, Opcode op, Value* lhs, Value* rhs) {
   inst->u.inst.ops[0] = lhs;
   inst->u.inst.ops[1] = rhs;
 
-  add_use(lhs, inst);
-  add_use(rhs, inst);
+  add_use(lhs, inst, 0);
+  add_use(rhs, inst, 1);
   append_inst(builder, inst);
   return inst;
 }
 
 Value* build_assign(IRBuilder* builder, Value* dest, Value* src) {
   Value* inst = create_value(VK_INST, dest->tp);
+  inst->id = ++global_inst_counter;
   inst->u.inst.opcode = OP_ASSIGN;
   inst->u.inst.num_ops = 2;
   inst->u.inst.ops = (Value**)malloc(sizeof(Value*) * 2);
@@ -150,8 +151,8 @@ Value* build_assign(IRBuilder* builder, Value* dest, Value* src) {
   inst->u.inst.ops[0] = dest;
   inst->u.inst.ops[1] = src;
 
-  // add_use(dest, inst);
-  add_use(src, inst);
+  // add_use(dest, inst, 0);
+  add_use(src, inst, 1);
   append_inst(builder, inst);
   return inst;
 }
@@ -163,7 +164,7 @@ Value* build_goto(IRBuilder* builder, Value* label_val) {
   inst->u.inst.ops = (Value**)malloc(sizeof(Value*) * 1);
   inst->u.inst.ops[0] = label_val;
 
-  add_use(label_val, inst);
+  add_use(label_val, inst, 0);
   append_inst(builder, inst);
   return label_val;
 }
@@ -181,9 +182,9 @@ Value* build_if_goto(IRBuilder* builder, Value* lhs, RelopKind rk, Value* rhs,
   inst->u.inst.ops[1] = rhs;
   inst->u.inst.ops[2] = label_val;
 
-  add_use(lhs, inst);
-  add_use(rhs, inst);
-  add_use(label_val, inst);
+  add_use(lhs, inst, 0);
+  add_use(rhs, inst, 1);
+  add_use(label_val, inst, 2);
 
   append_inst(builder, inst);
   return inst;
@@ -196,7 +197,7 @@ Value* build_return(IRBuilder* builder, Value* ret_val) {
   inst->u.inst.ops = (Value**)malloc(sizeof(Value*) * 1);
   inst->u.inst.ops[0] = ret_val;
 
-  add_use(ret_val, inst);
+  add_use(ret_val, inst, 0);
   append_inst(builder, inst);
   return inst;
 }
@@ -210,7 +211,7 @@ Value* build_dec(IRBuilder* builder, Value* var_val, int size) {
   inst->u.inst.ops[0] = var_val;  // 需要开辟空间的变量 (通常是 VK_VAR)
   inst->u.inst.ops[1] = build_const_int(size);
 
-  add_use(var_val, inst);
+  add_use(var_val, inst, 0);
   append_inst(builder, inst);
   return inst;
 }
@@ -225,7 +226,7 @@ Value* build_get_addr(IRBuilder* builder, Value* src) {
 
   inst->u.inst.ops[0] = src;
 
-  add_use(src, inst);
+  add_use(src, inst, 0);
   append_inst(builder, inst);
   return inst;
 }
@@ -240,7 +241,7 @@ Value* build_load(IRBuilder* builder, Value* src_addr, Type* tp) {
 
   inst->u.inst.ops[0] = src_addr;
 
-  add_use(src_addr, inst);
+  add_use(src_addr, inst, 0);
   append_inst(builder, inst);
   return inst;
 }
@@ -255,8 +256,8 @@ Value* build_store(IRBuilder* builder, Value* dest_addr, Value* src) {
   inst->u.inst.ops[0] = dest_addr;  // 作为目标地址的变量
   inst->u.inst.ops[1] = src;        // 被写入的数据源
 
-  add_use(dest_addr, inst);
-  add_use(src, inst);
+  add_use(dest_addr, inst, 0);
+  add_use(src, inst, 1);
   append_inst(builder, inst);
   return inst;
 }
@@ -269,7 +270,7 @@ Value* build_param(IRBuilder* builder, Value* param_val) {
   inst->u.inst.ops = (Value**)malloc(sizeof(Value*) * 1);
   inst->u.inst.ops[0] = param_val;
 
-  add_use(param_val, inst);
+  add_use(param_val, inst, 0);
   append_inst(builder, inst);
   return inst;
 }
@@ -282,7 +283,7 @@ Value* build_arg(IRBuilder* builder, Value* arg_val) {
   inst->u.inst.ops = (Value**)malloc(sizeof(Value*) * 1);
   inst->u.inst.ops[0] = arg_val;
 
-  add_use(arg_val, inst);
+  add_use(arg_val, inst, 0);
   append_inst(builder, inst);
   return inst;
 }
@@ -301,7 +302,7 @@ Value* build_call(IRBuilder* builder, Value* func_val) {
 
   inst->u.inst.ops[0] = func_val;
 
-  add_use(func_val, inst);
+  add_use(func_val, inst, 0);
   append_inst(builder, inst);
   return inst;
 }
@@ -326,7 +327,7 @@ Value* build_write(IRBuilder* builder, Value* src) {
   inst->u.inst.ops = (Value**)malloc(sizeof(Value*) * 1);
   inst->u.inst.ops[0] = src;
 
-  add_use(src, inst);
+  add_use(src, inst, 0);
   append_inst(builder, inst);
   return inst;
 }

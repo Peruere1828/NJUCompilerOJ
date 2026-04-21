@@ -61,6 +61,7 @@ typedef struct IRModule IRModule;
 struct Use {
   Value* def;      // 指向被使用的源数据
   Value* user;     // 指向使用数据的指令
+  int op_index;    // 第几个操作数
   Use *pre, *nxt;  // 双向链表
 };
 
@@ -106,7 +107,8 @@ typedef enum {
   OP_READ,
   OP_WRITE,
 
-  OP_PHI  // 把SSA的phi节点视作特殊的OP
+  OP_PHI,  // 把SSA的phi节点视作特殊的OP
+  OP_NOP   // 空指令，在DCE中可以删除
 } Opcode;
 
 struct Value {
@@ -120,7 +122,7 @@ struct Value {
 
   union {
     // 常量
-    unsigned long int_val;
+    int int_val;
     float float_val;
 
     // 全局变量
@@ -209,7 +211,7 @@ typedef struct IRModule {
 // 创建基础的 Value 节点
 Value* create_value(ValueKind vk, Type* tp);
 // 指令 user 使用了数据源 def
-void add_use(Value* def, Value* user);
+void add_use(Value* def, Value* user, int op_index);
 void remove_use(Value* def, Value* user);
 
 void lower_to_SSA(IRModule* ir_module);

@@ -19,7 +19,7 @@ void optimize_TAC(IRModule* ir_module) {
       changed = 0;
 
       changed |= pass_simplify_CFG(cur_func);
-      changed |= pass_dce(cur_func);
+      changed |= pass_dce_TAC(cur_func);
       /// TODO: 未来可扩展其它局部窥孔优化
       // changed |= pass_local_peephole(cur_func);
       iter++;
@@ -156,7 +156,7 @@ static void delete_inst(Value* inst) {
   }
 }
 
-int pass_dce(Value* func) {
+int pass_dce_TAC(Value* func) {
   int changed = 0;
   Value* bb = func->u.func.bb_head;
 
@@ -178,7 +178,7 @@ int pass_dce(Value* func) {
         } else if (op == OP_I_ADD || op == OP_I_SUB || op == OP_I_MUL ||
                    op == OP_I_DIV || op == OP_F_ADD || op == OP_F_SUB ||
                    op == OP_F_MUL || op == OP_F_DIV || op == OP_GET_ADDR ||
-                   op == OP_LOAD) {
+                   op == OP_LOAD || op == OP_NOP) {
           dest_val = inst;
         }
 

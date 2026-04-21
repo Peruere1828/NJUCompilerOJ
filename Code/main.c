@@ -2,11 +2,12 @@
 
 #include "AST.h"
 #include "config.h"
+#include "destroy_SSA.h"
+#include "optimize_SSA.h"
+#include "optimize_TAC.h"
 #include "semantic.h"
 #include "semantic_error.h"
 #include "translate.h"
-#include "optimize_TAC.h"
-#include "destroy_SSA.h"
 
 extern FILE* yyin;
 extern int yylineno;
@@ -92,6 +93,7 @@ int main(int argc, char** argv) {
     return 1;
   }
   lower_to_SSA(ir_module);
+  optimize_SSA(ir_module);
   destroy_SSA(ir_module);
   optimize_TAC(ir_module);
   if (ir_module != NULL) {

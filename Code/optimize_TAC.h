@@ -5,7 +5,7 @@
 
 void optimize_TAC(IRModule* ir_module);
 
-int pass_dce(Value* func);
+int pass_dce_TAC(Value* func);
 int pass_simplify_CFG(Value* func);
 
 #endif

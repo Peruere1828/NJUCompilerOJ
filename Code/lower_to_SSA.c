@@ -415,7 +415,7 @@ static void rename_dfs(RenameContext* ctx, Value* cur_bb) {
           if (latest != op) {
             remove_use(op, inst);
             inst->u.inst.ops[i] = latest;
-            add_use(latest, inst);  // 建立 SSA 下的 Def-Use 链
+            add_use(latest, inst, i);  // 建立 SSA 下的 Def-Use 链
           }
         }
       }
@@ -462,9 +462,8 @@ static void rename_dfs(RenameContext* ctx, Value* cur_bb) {
           p->u.inst.ops, sizeof(Value*) * (p->u.inst.num_ops + 2));
       p->u.inst.ops[p->u.inst.num_ops] = latest;
       p->u.inst.ops[p->u.inst.num_ops + 1] = cur_bb;
+      add_use(latest, p, p->u.inst.num_ops);
       p->u.inst.num_ops += 2;
-
-      add_use(latest, p);
       p = p->u.inst.nxt;
     }
   }

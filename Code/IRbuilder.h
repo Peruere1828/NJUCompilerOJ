@@ -23,7 +23,7 @@ void builder_set_function(IRBuilder* builder, Value* func);
 void builder_set_insert_point(IRBuilder* builder, Value* bb);
 
 // --- 基础实体创建 (不涉及指令插入) ---
-Value* build_const_int(unsigned long val);
+Value* build_const_int(int val);
 Value* build_const_float(float val);
 Value* build_new_block(Value* parent_func);  // 创建基本块
 Value* map_declare_var(IRBuilder* builder, int frontend_id, Type* tp);

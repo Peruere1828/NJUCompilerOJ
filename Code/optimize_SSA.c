@@ -1,0 +1,116 @@
+#include "optimize_SSA.h"
+
+#include <stdlib.h>
+
+#include "IRbuilder.h"
+
+void optimize_SSA(IRModule* ir_module) {
+  if (ir_module == NULL) return;
+
+  Value* cur_func = ir_module->func_list;
+  while (cur_func != NULL) {
+    int changed = 1;
+    const int max_iterations = 10;
+    int iter = 0;
+
+    while (changed && iter < max_iterations) {
+      changed = 0;
+
+      changed |= pass_constant_propagation(cur_func);
+      /// TODO: 未来可扩展其它局部窥孔优化
+      // changed |= pass_local_peephole(cur_func);
+      iter++;
+    }
+    cur_func = cur_func->u.func.next_func;
+  }
+}
+
+static void propagate_through_uselist(Value* inst, Value* new_const) {
+  Use* cur_use = inst->use_list;
+  while (cur_use) {
+    Use* nxt_use = cur_use->nxt;
+    Value* user = cur_use->user;
+    int op_index = cur_use->op_index;
+
+    user->u.inst.ops[op_index] = new_const;
+
+    free(cur_use);
+    cur_use = nxt_use;
+  }
+  inst->use_list = NULL;
+  inst->u.inst.opcode = OP_NOP;
+}
+
+static void replace_inst_with_const_int(Value* inst, int val) {
+  Value* new_const = build_const_int(val);
+  propagate_through_uselist(inst, new_const);
+}
+
+static void replace_inst_with_const_float(Value* inst, float val) {
+  Value* new_const = build_const_float(val);
+  propagate_through_uselist(inst, new_const);
+}
+
+int pass_constant_propagation(Value* func) {
+  if (func == NULL) return 0;
+  int changed = 0;
+
+  for (Value* bb = func->u.func.bb_head; bb != NULL; bb = bb->u.bb.next_bb) {
+    for (Value* inst = bb->u.bb.inst_head; inst != NULL;
+         inst = inst->u.inst.nxt) {
+      Opcode op = inst->u.inst.opcode;
+      if (op == OP_I_ADD || op == OP_I_SUB || op == OP_I_MUL ||
+          op == OP_I_DIV) {
+        Value* arg1 = inst->u.inst.ops[0];
+        Value* arg2 = inst->u.inst.ops[1];
+        if (arg1->vk == VK_CONST_INT && arg2->vk == VK_CONST_INT) {
+          int res = 0;
+          int val1 = arg1->u.int_val, val2 = arg2->u.int_val;
+          if (op == OP_I_ADD) {
+            res = val1 + val2;
+          } else if (op == OP_I_SUB) {
+            res = val1 - val2;
+          } else if (op == OP_I_MUL) {
+            res = val1 * val2;
+          } else {  // op == OP_I_DIV
+            // 我们忽略除零情况
+            res = val1 / val2;
+          }
+          replace_inst_with_const_int(inst, res);
+          changed = 1;
+        }
+      } else if (op == OP_F_ADD || op == OP_F_SUB || op == OP_F_MUL ||
+                 op == OP_F_DIV) {
+        Value* arg1 = inst->u.inst.ops[0];
+        Value* arg2 = inst->u.inst.ops[1];
+        if (arg1->vk == VK_CONST_FLOAT && arg2->vk == VK_CONST_FLOAT) {
+          float res = 0;
+          float val1 = arg1->u.float_val, val2 = arg2->u.float_val;
+          if (op == OP_F_ADD) {
+            res = val1 + val2;
+          } else if (op == OP_F_SUB) {
+            res = val1 - val2;
+          } else if (op == OP_F_MUL) {
+            res = val1 * val2;
+          } else {  // op == OP_F_DIV
+            // 我们忽略除零情况
+            res = val1 / val2;
+          }
+          replace_inst_with_const_float(inst, res);
+          changed = 1;
+        }
+      } else if (op == OP_ASSIGN) {
+        Value* arg1 = inst->u.inst.ops[0];
+        if (arg1->vk == VK_CONST_INT) {
+          replace_inst_with_const_int(inst, arg1->u.int_val);
+          changed = 1;
+        } else if (arg1->vk == VK_CONST_FLOAT) {
+          replace_inst_with_const_float(inst, arg1->u.float_val);
+          changed = 1;
+        }
+      }
+    }
+  }
+
+  return changed;
+}

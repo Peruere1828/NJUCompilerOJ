@@ -41,7 +41,7 @@ static void split_critical_edges(Value* func) {
 
           mid_bb->u.bb.inst_head = goto_inst;
           mid_bb->u.bb.inst_tail = goto_inst;
-          add_use(succ_bb, goto_inst);
+          add_use(succ_bb, goto_inst,0);
 
           Value* tail = cur_bb->u.bb.inst_tail;
           if (tail != NULL && tail->u.inst.opcode == OP_GOTO &&
@@ -149,7 +149,7 @@ static void remove_phi_nodes(Value* func) {
             copy_to_tmp->u.inst.ops[1] = src_val;
             copy_to_tmp->u.inst.parent_bb = pred_bb;
 
-            add_use(src_val, copy_to_tmp);
+            add_use(src_val, copy_to_tmp,1);
             insert_inst_before(pred_bb, tail, copy_to_tmp);
 
             safe_srcs[i] = tmp_var;
@@ -171,7 +171,7 @@ static void remove_phi_nodes(Value* func) {
           final_assign->u.inst.ops[1] = safe_srcs[i];
           final_assign->u.inst.parent_bb = pred_bb;
 
-          add_use(safe_srcs[i], final_assign);
+          add_use(safe_srcs[i], final_assign,1);
           insert_inst_before(pred_bb, tail, final_assign);
         }
       }

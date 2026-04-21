@@ -62,6 +62,8 @@ void print_module(IRModule* module, FILE* out) {
 void print_inst(Value* inst, FILE* out) {
   if (inst == NULL || inst->vk != VK_INST) return;
 
+  /// BUG: 输出WRITE的时候应该用变量先承载具体的值再打印变量
+
   // 如果这条指令有返回值 (比如加法、调用)，需要先打印左值 "t_x := "
   // 有些指令 (如 GOTO, RETURN, STORE) 没有左值结果
   Opcode op = inst->u.inst.opcode;
@@ -177,6 +179,9 @@ void print_inst(Value* inst, FILE* out) {
       }
       fprintf(out, ")");
       break;
+    case OP_NOP:
+      fprintf(out, "NOP");
+      break;
     default:
       fprintf(out, "UNKNOWN_INST");
       break;
@@ -200,7 +205,7 @@ void print_value(Value* val, FILE* out) {
   if (!val) return;
   switch (val->vk) {
     case VK_CONST_INT:
-      fprintf(out, "#%ld", val->u.int_val);
+      fprintf(out, "#%d", val->u.int_val);
       break;
     case VK_CONST_FLOAT:
       fprintf(out, "#%f", val->u.float_val);
