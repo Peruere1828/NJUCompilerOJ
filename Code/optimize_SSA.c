@@ -75,6 +75,12 @@ int pass_constant_propagation(Value* func) {
           } else {  // op == OP_I_DIV
             // 我们忽略除零情况
             res = val1 / val2;
+            /// FEAT: 遵循irsim的行为，向负无穷取整
+            int rem = val1 % val2;
+            // 如果余数不为 0，且两个操作数异号，结果需要再减 1
+            if (rem != 0 && ((val1 < 0) ^ (val2 < 0))) {
+              res -= 1;
+            }
           }
           replace_inst_with_const_int(inst, res);
           changed = 1;
