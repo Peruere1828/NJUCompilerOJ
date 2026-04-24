@@ -42,8 +42,20 @@ int insert_symbol(const char* name, const Type* type, const int lineno) {
   SymbolNode* cur_hash = hash_table[ind];
   while (cur_hash != NULL) {
     if (strcmp(cur_hash->name, name) == 0) {
-      if (type->kind == TYPE_STRUCTURE ||
-          cur_hash->type->kind == TYPE_STRUCTURE) {
+      // 判断即将插入的符号是否是结构体定义 (判定依据: 符号名 == 结构体类型名)
+      int is_new_struct_def =
+          (type->kind == TYPE_STRUCTURE && type->u.structure.name != NULL &&
+           strcmp(name, type->u.structure.name) == 0);
+
+      // 判断哈希表中冲突的符号是否是结构体定义
+      int is_old_struct_def =
+          (cur_hash->type->kind == TYPE_STRUCTURE &&
+           cur_hash->type->u.structure.name != NULL &&
+           strcmp(cur_hash->name, cur_hash->type->u.structure.name) == 0);
+
+      // 只有当其中一个是"结构体定义"时，才不允许跨作用域重名。
+      // 如果两者都是普通变量（即使一个是结构体变量，一个是int变量），允许局部遮蔽。
+      if (is_new_struct_def || is_old_struct_def) {
         return 0;
       }
     }
