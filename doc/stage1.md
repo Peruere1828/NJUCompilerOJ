@@ -6,14 +6,14 @@
 
 ## 功能测试
 
-测试了[这个测试](https://github.com/Peruere1828/nju-compiler-test)（fork from NijikaIjichi/nju-compiler-test）的基础内容部分，结果如下：
+测试了[这个测试](https://github.com/Peruere1828/nju-compiler-test/tree/0035661e904771cc1d6a0adc76231fedc0611195)（fork from NijikaIjichi/nju-compiler-test）的基础内容部分，结果如下：
 
 | 测试选项 | 结果                                       |
 | -------- | ------------------------------------------ |
-| 全部选做 | AC: 85, FalsePositive: 1, WA: 1, total: 87 |
-| 仅选做一 | AC: 67, FalsePositive: 1, WA: 2, total: 70 |
-| 仅选做二 | AC: 67, FalsePositive: 1, WA: 2, total: 70 |
-| 仅选做三 | AC: 69, FalsePositive: 1, WA: 1, total: 71 |
+| 全部选做 | AC: 109, FalsePositive: 1, total: 110      |
+| 仅选做一 | AC: 87, FalsePositive: 1, WA: 1, total: 89 |
+| 仅选做二 | AC: 87, FalsePositive: 1, WA: 1, total: 89 |
+| 仅选做三 | AC: 89, FalsePositive: 1, total: 90        |
 
 其中 FalsePositive 的样例简写（后文同样为样例简写）如下：
 
@@ -27,13 +27,6 @@ int main() {
 标答认为应仅在 `Node` 行报语法错误，但我在两行都报了语法错误。
 
 WA 的样例包括：
-
-```c
-a = 1
-b = 2;
-```
-
-标答认为应在前一行报语法错误，但我报了后一行。
 
 ```c
 /*
