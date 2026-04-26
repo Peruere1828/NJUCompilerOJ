@@ -6,5 +6,6 @@
 void optimize_SSA(IRModule* ir_module);
 
 int pass_constant_propagation(Value* func);
+int pass_CSE(Value* func);
 
 #endif

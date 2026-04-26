@@ -45,7 +45,7 @@ v_1_2 := t_1
 这个阶段涉及的字段应当重新strdup
 
 先翻译成TAC格式，再做CFG，计算支配树得到SSA
-TODO: 添加SSA回到TAC的支持，以及读入TAC的支持
+TODO: 读入TAC的支持
 */
 
 #ifndef IR_H

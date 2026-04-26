@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "IRbuilder.h"
 
@@ -18,6 +19,7 @@ void optimize_SSA(IRModule* ir_module) {
       changed = 0;
 
       changed |= pass_constant_propagation(cur_func);
+      changed |= pass_CSE(cur_func);
       /// TODO: 未来可扩展其它局部窥孔优化
       // changed |= pass_local_peephole(cur_func);
       iter++;
@@ -34,6 +36,7 @@ static void propagate_through_uselist(Value* inst, Value* new_const) {
     int op_index = cur_use->op_index;
 
     user->u.inst.ops[op_index] = new_const;
+    add_use(new_const, user, op_index);
 
     free(cur_use);
     cur_use = nxt_use;
@@ -189,4 +192,144 @@ int pass_constant_propagation(Value* func) {
   }
 
   return changed;
+}
+
+// 全局CSE仅对四则运算和LOAD生效，STORE和CALL会对LOAD有副作用，导致LOAD直接失效
+
+// 比较两个操作数，如果 a > b 返回 1，用于交换律规范化
+static int compare_value(Value* a, Value* b) {
+  if (a->vk != b->vk) {
+    return a->vk - b->vk;
+  }
+  if (a->vk == VK_VAR || a->vk == VK_INST) {
+    return a->id - b->id;
+  }
+  if (a->vk == VK_CONST_INT) {
+    return a->u.int_val - b->u.int_val;
+  }
+  if (a->vk == VK_CONST_FLOAT) {
+    return a->u.float_val - b->u.float_val;
+  }
+  return 0;
+}
+
+#define MAX_EXPRS 16384
+Value* expr_table[MAX_EXPRS];
+int expr_mem_ver[MAX_EXPRS];
+int expr_count = 0;
+int current_mem_version = 0;
+
+static Value* check_trivial_phi(Value* inst) {
+  if (inst == NULL || inst->u.inst.opcode != OP_PHI) return NULL;
+  Value* uniform_val = NULL;
+  for (int i = 0; i < inst->u.inst.num_ops; i += 2) {
+    Value* val = inst->u.inst.ops[i];
+    if (val == inst) continue;
+    if (uniform_val == NULL) {
+      uniform_val = val;
+    } else if (uniform_val != val) {
+      return NULL;
+    }
+  }
+  // 如果 uniform_val 依然是 NULL，说明所有的参数都是自引用 (死代码)
+  // 这种情况下直接返回 NULL 交给 DCE 清理即可
+  return uniform_val;
+}
+
+static int is_identical_ops(Value* inst, Value* cached) {
+  if (inst->u.inst.num_ops != cached->u.inst.num_ops) {
+    return 0;
+  }
+  Opcode op = inst->u.inst.opcode;
+  int is_commutative =
+      (op == OP_I_ADD || op == OP_F_ADD || op == OP_I_MUL || op == OP_F_MUL);
+  if (is_commutative && inst->u.inst.num_ops == 2) {
+    Value* i0 = inst->u.inst.ops[0];
+    Value* i1 = inst->u.inst.ops[1];
+    Value* c0 = cached->u.inst.ops[0];
+    Value* c1 = cached->u.inst.ops[1];
+
+    if ((i0 == c0 && i1 == c1) || (i0 == c1 && i1 == c0)) {
+      return 1;
+    }
+    return 0;
+  }
+  for (int i = 0; i < inst->u.inst.num_ops; i++) {
+    if (inst->u.inst.ops[i] != cached->u.inst.ops[i]) {
+      return 0;
+    }
+  }
+  // 仅比较二元运算相关的指令，不比较if goto等
+  return 1;
+}
+
+int gcse_bb(Value* bb) {
+  int changed = 0;
+  int saved_expr_count = expr_count;
+
+  Value* inst = bb->u.bb.inst_head;
+  while (inst != NULL) {
+    Opcode op = inst->u.inst.opcode;
+
+    if (op == OP_STORE || op == OP_CALL) {
+      current_mem_version++;
+    }
+
+    // canonicalize_inst(inst);
+
+    if (op == OP_PHI) {
+      Value* uniform_val = check_trivial_phi(inst);
+      if (uniform_val != NULL) {
+        propagate_through_uselist(inst, uniform_val);
+        inst = inst->u.inst.nxt;
+        changed = 1;
+        continue;
+      }
+    }
+
+    int is_matched = 0;
+    int is_computational =
+        (op == OP_I_ADD || op == OP_F_ADD || op == OP_I_SUB || op == OP_F_SUB ||
+         op == OP_I_MUL || op == OP_F_MUL || op == OP_I_DIV || op == OP_F_DIV ||
+         op == OP_LOAD || op == OP_PHI);
+
+    if (is_computational) {
+      for (int i = 0; i < expr_count; i++) {
+        Value* cached = expr_table[i];
+        if (cached->u.inst.opcode != op) continue;
+
+        // 内存版本检查：如果是 LOAD，必须是 LOAD 相同的内存版本
+        if (op == OP_LOAD && expr_mem_ver[i] != current_mem_version) continue;
+
+        if (is_identical_ops(inst, cached)) {
+          propagate_through_uselist(inst, cached);
+          is_matched = 1;
+          changed = 1;
+          break;
+        }
+      }
+    }
+
+    if (!is_matched && is_computational) {
+      expr_table[expr_count] = inst;
+      expr_mem_ver[expr_count] = current_mem_version;
+      expr_count++;
+    }
+
+    inst = inst->u.inst.nxt;
+  }
+
+  for (int i = 0; i < bb->u.bb.num_idom_kids; i++) {
+    changed |= gcse_bb(bb->u.bb.idom_kids[i]);
+  }
+
+  expr_count = saved_expr_count;
+  return changed;
+}
+
+int pass_CSE(Value* func) {
+  memset(expr_table, 0, sizeof(expr_table));
+  memset(expr_mem_ver, 0, sizeof(expr_mem_ver));
+  expr_count = current_mem_version = 0;
+  return gcse_bb(func->u.func.bb_head);
 }
