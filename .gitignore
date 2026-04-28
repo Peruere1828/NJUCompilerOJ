@@ -31,5 +31,3 @@ mypack.sh
 *.pdf
 
 build.log
-
-test_framework/

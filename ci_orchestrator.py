@@ -2,6 +2,24 @@ import os
 import subprocess
 import sys
 
+def update_test_framework():
+    """更新 test_framework submodule 到最新版本"""
+    try:
+        result = subprocess.run(
+            ["git", "-C", "test_framework", "pull", "origin", "master"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        print("test_framework 更新成功")
+        print(result.stdout)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"更新失败: {e.stderr}")
+        return False
+
+update_test_framework()
+
 # 完整定义阶段和选做宏
 STAGES_CONFIG = [
     {
@@ -86,9 +104,9 @@ def run_test(stage_idx, req_idx):
         test_cmd = f"(cd ./test_framework/{test_dir} && python3 test.py -p ../../parser -g {req_idx}) >> build.log 2>&1"
     elif stage_idx == 3:
         if req_idx == 1 or req_idx == 2:
-            test_cmd = f"(cd ./test_framework/{test_dir} && ./run.sh -r ../../parser -e extend{req_idx} -c) >> build.log 2>&1"
+            test_cmd = f"(cd ./test_framework/{test_dir} && python3 test.py -r ../../parser -e extend{req_idx} -c) >> build.log 2>&1"
         else:
-            test_cmd = f"(cd ./test_framework/{test_dir} && ./run.sh -r ../../parser -e both -ac) >> build.log 2>&1"
+            test_cmd = f"(cd ./test_framework/{test_dir} && python3 test.py -r ../../parser -e both -ac) >> build.log 2>&1"
             
     run_cmd(test_cmd, f"Test Stage {stage_idx} Req {req_idx}")
 
