@@ -430,13 +430,18 @@ static void emit_arg(CG* cg, Value* inst) {
 
 static void emit_call(CG* cg, Value* inst) {
     Value* func_val = inst->u.inst.ops[0];  /* VK_FUNCTION */
-    int n = cg->arg_count;
+    int argc = func_val->u.func.argc;
 
-    /* Emit args in LEFT-to-RIGHT order ($a0 = first param, etc.).
-       Since ARGs were buffered in right-to-left order, buffer = [last, ..., first].
-       Reverse iterate: buf[n-1-i] gives first param at i=0. */
-    for (int i = 0; i < n; i++) {
-        int buf_idx = n - 1 - i;
+    /* Pop 'argc' arguments from the ARG stack.  ARGs were pushed in
+       right-to-left order: buffer = [last_param, ..., first_param].
+       We consume exactly 'argc' args from the END of the buffer,
+       leaving outer call arguments intact for nested expressions.
+       buf[base+argc-1] = first param → $a0, buf[base] = last param. */
+    int base = cg->arg_count - argc;
+    if (base < 0) base = 0;
+
+    for (int i = 0; i < argc; i++) {
+        int buf_idx = base + argc - 1 - i;  /* take from end backwards */
         Value* arg = cg->arg_buf[buf_idx];
         load_val(cg, arg, R_T8);
 
@@ -463,7 +468,8 @@ static void emit_call(CG* cg, Value* inst) {
         store_val(cg, inst, R_V0);
     }
 
-    cg->arg_count = 0;  /* reset for next call sequence */
+    /* Pop only this call's args from the buffer */
+    cg->arg_count = base;
 }
 
 static void emit_read(CG* cg, Value* inst) {
