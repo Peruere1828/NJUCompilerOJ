@@ -28,4 +28,6 @@
 // 可以出现高维数组类型变量以及一维数组类型的函数参数
 #define STAGE_THREE_REQ_TWO 1
 
+#define STAGE_FOUR
+
 #endif

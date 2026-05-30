@@ -8,6 +8,9 @@
 #include "semantic.h"
 #include "semantic_error.h"
 #include "translate.h"
+#ifdef STAGE_FOUR
+#include "codegen.h"
+#endif
 
 extern FILE* yyin;
 extern int yylineno;
@@ -24,7 +27,12 @@ extern void check_unclosed_comment();
 #endif
 
 int main(int argc, char** argv) {
-#if defined(STAGE_ONE) || defined(STAGE_TWO)
+#if defined(STAGE_FOUR)
+  if (argc <= 3) {
+    printf("Usage: %s <filename> <output_s> <output_ir>\n", argv[0]);
+    return 1;
+  }
+#elif defined(STAGE_ONE) || defined(STAGE_TWO)
   if (argc <= 1) {
     printf("Usage: %s <filename>\n", argv[0]);
     return 1;
@@ -96,6 +104,25 @@ int main(int argc, char** argv) {
   optimize_SSA(ir_module);
   destroy_SSA(ir_module);
   optimize_TAC(ir_module);
+
+#ifdef STAGE_FOUR
+  if (ir_module != NULL) {
+    generate_mips(ir_module, out, 1);  // phase 1: stack-based
+  }
+  fclose(out);
+
+  FILE* ir_out = fopen(argv[3], "w");
+  if (!ir_out) {
+    perror(argv[3]);
+    return 1;
+  }
+  if (ir_module != NULL) {
+    print_module(ir_module, ir_out);
+  }
+  fclose(ir_out);
+  goto End;
+#endif
+
   if (ir_module != NULL) {
     print_module(ir_module, out);
   }
