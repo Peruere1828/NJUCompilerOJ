@@ -70,7 +70,8 @@ typedef struct {
 
     /* ---- Argument tracking ---- */
     Value* arg_buf[64];           /* buffered ARG values (right-to-left order) */
-    int    arg_count;             /* number of ARGs in current call sequence */
+    int    arg_count;             /* total buffered ARGs */
+    int    arg_tos;               /* tos marker: args since last CALL start here */
 
     /* ---- Phase 2 ---- */
     int    phys_reg[0x4000];     /* value id -> MIPS reg (0..K-1) or -1 */
@@ -430,18 +431,18 @@ static void emit_arg(CG* cg, Value* inst) {
 
 static void emit_call(CG* cg, Value* inst) {
     Value* func_val = inst->u.inst.ops[0];  /* VK_FUNCTION */
-    int argc = func_val->u.func.argc;
 
-    /* Pop 'argc' arguments from the ARG stack.  ARGs were pushed in
-       right-to-left order: buffer = [last_param, ..., first_param].
-       We consume exactly 'argc' args from the END of the buffer,
-       leaving outer call arguments intact for nested expressions.
-       buf[base+argc-1] = first param → $a0, buf[base] = last param. */
-    int base = cg->arg_count - argc;
-    if (base < 0) base = 0;
+    /* Consume all ARGs pushed since the last CALL marker (arg_tos).
+       This tracks the natural pairing: each CALL consumes the ARGs
+       that appear between it and the previous CALL, correctly
+       handling nested and sequential call expressions. */
+    int base = cg->arg_tos;
+    int n = cg->arg_count - base;
 
-    for (int i = 0; i < argc; i++) {
-        int buf_idx = base + argc - 1 - i;  /* take from end backwards */
+    for (int i = 0; i < n; i++) {
+        /* ARGs pushed right-to-left: buf[last]=first_param, buf[first]=last_param.
+           Reverse iteration: buf[arg_count-1-i] → first param at i=0 ($a0). */
+        int buf_idx = cg->arg_count - 1 - i;
         Value* arg = cg->arg_buf[buf_idx];
         load_val(cg, arg, R_T8);
 
@@ -468,8 +469,9 @@ static void emit_call(CG* cg, Value* inst) {
         store_val(cg, inst, R_V0);
     }
 
-    /* Pop only this call's args from the buffer */
+    /* Pop consumed args; advance marker for next call */
     cg->arg_count = base;
+    cg->arg_tos   = base;
 }
 
 static void emit_read(CG* cg, Value* inst) {
@@ -673,6 +675,7 @@ static void codegen_function(CG* cg, Value* func) {
 
         Value* inst = bb->u.bb.inst_head;
         cg->arg_count = 0;
+        cg->arg_tos   = 0;
         while (inst) {
             Opcode op = inst->u.inst.opcode;
 
