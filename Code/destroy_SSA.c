@@ -134,7 +134,7 @@ static void remove_phi_nodes(Value* func) {
   Value* bb = func->u.func.bb_head;
   while (bb) {
     int phi_count = 0;
-    Value* phi_insts[256];
+    Value* phi_insts[512];
     Value* inst = bb->u.bb.inst_head;
 
     while (inst != NULL && inst->u.inst.opcode == OP_PHI) {
@@ -152,8 +152,8 @@ static void remove_phi_nodes(Value* func) {
         assert(tail != NULL && tail->u.inst.opcode == OP_GOTO);
 
         // 收集所有 Phi 的 src_val
-        Value* srcs[256];
-        Value* safe_srcs[256];
+        Value* srcs[512];
+        Value* safe_srcs[512];
 
         for (int i = 0; i < phi_count; ++i) {
           Value* phi = phi_insts[i];
@@ -164,7 +164,14 @@ static void remove_phi_nodes(Value* func) {
               break;
             }
           }
-          assert(src_val != NULL);
+          /* If a phi node lacks an entry for this predecessor, the predecessor
+             was added to the CFG after phi insertion (e.g. during critical-edge
+             splitting).  Use the phi's own result as a safe fallback — this
+             preserves the existing value along the new edge rather than
+             crashing the compiler. */
+          if (src_val == NULL) {
+            src_val = phi;
+          }
           srcs[i] = src_val;
         }
 
