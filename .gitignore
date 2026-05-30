@@ -31,3 +31,6 @@ mypack.sh
 *.pdf
 
 build.log
+
+.claude/
+tmp/
