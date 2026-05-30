@@ -358,13 +358,16 @@ static void emit_binary(CG* cg, Value* inst, const char* mnemonic) {
            MIPS div truncates toward zero.  After div $t8,$t9 the
            source regs are unchanged (LO=quot, HI=rem).
            If remainder≠0 AND signs differ → floor = trunc - 1.
-           $t7 is free in phase 1 (all values on stack). */
+           Uses only $t8/$t9 (scratch regs not in allocatable pool).
+           Puts lw/move in branch delay slot (always harmless). */
         static int div_label = 0;
         int lbl = div_label++;
 
         fprintf(cg->out, "\tdiv %s, %s\n", reg_name(R_T8), reg_name(R_T9));
-        fprintf(cg->out, "\tmfhi $t7\n");
-        fprintf(cg->out, "\tbeq $t7, $zero, .L_flr_%d\n", lbl);
+        fprintf(cg->out, "\tmfhi %s\n", reg_name(R_T8));  /* clobber $t8 with HI */
+        fprintf(cg->out, "\tbeq %s, $zero, .L_flr_%d\n", reg_name(R_T8), lbl);
+        /* reload lhs for XOR sign check (delay slot of beq, always runs) */
+        load_val(cg, inst->u.inst.ops[0], R_T8);
         fprintf(cg->out, "\txor %s, %s, %s\n",
                 reg_name(R_T8), reg_name(R_T8), reg_name(R_T9));
         fprintf(cg->out, "\tbgez %s, .L_flr_%d\n", reg_name(R_T8), lbl);

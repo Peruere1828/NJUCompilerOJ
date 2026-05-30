@@ -25,7 +25,7 @@
 /* ================================================================== */
 /*  LiveSet — bit vector for up to 512 values                          */
 /* ================================================================== */
-#define LIVE_WORDS 8
+#define LIVE_WORDS 16
 #define LIVE_BITS  (LIVE_WORDS * 64)
 
 typedef struct {
@@ -53,7 +53,7 @@ static int ls_popcount(LiveSet* s) {
 /* ================================================================== */
 /*  Value indexing — maps global Value ids to dense local indices      */
 /* ================================================================== */
-#define MAX_VALS  512
+#define MAX_VALS  1024
 
 typedef struct {
     int  count;
@@ -68,9 +68,11 @@ static void vx_init(ValueIndex* vx) {
 
 static int vx_add(ValueIndex* vx, Value* val) {
     int gid = val->id;
+    if (gid < 0 || gid > MAX_ID) return -1;  /* safety: out of range */
     if (vx->global_to_local[gid] >= 0)
         return vx->global_to_local[gid];  /* already tracked */
     int lid = vx->count;
+    if (lid >= MAX_VALS) return -1;  /* too many values */
     vx->global_to_local[gid] = lid;
     vx->local_to_value[lid] = val;
     vx->count++;
@@ -103,7 +105,7 @@ typedef struct {
 
     /* Interference graph */
     int       degree[MAX_VALS];
-    bool      adj[MAX_VALS][MAX_VALS];  /* dense adjacency for K=16, N≤512 */
+    bool*     adj;               /* flat bool array: adj[a*nv + b] */
 
     /* Spill cost heuristic */
     int       use_count[MAX_VALS];
@@ -136,7 +138,7 @@ static Value** flatten_bbs(Value* func, int* out_n) {
     return arr;
 }
 
-/* ---- Collect all live values (VK_VAR + result-producing VK_INST) ---- */
+/* ---- Collect all live values (VK_VAR + VK_INST) ---- */
 static void collect_values(RAState* rs) {
     vx_init(&rs->vx);
 
@@ -144,14 +146,14 @@ static void collect_values(RAState* rs) {
         Value* bb = rs->bbs[bi];
         Value* inst = bb->u.bb.inst_head;
         while (inst) {
-            /* Track all VK_VAR operands */
+            /* Track all VAR and INST operands (after SSA destruction,
+               variables are referenced as VK_INST, not VK_VAR). */
             for (int i = 0; i < inst->u.inst.num_ops; i++) {
                 Value* op = inst->u.inst.ops[i];
-                if (op && op->vk == VK_VAR)
+                if (op && (op->vk == VK_VAR || op->vk == VK_INST))
                     vx_add(&rs->vx, op);
             }
-            /* Track VK_INST that produce a result (have an id and
-               could be used by other instructions) */
+            /* Track the instruction itself if it produces a result */
             Opcode op = inst->u.inst.opcode;
             if ((op >= OP_I_ADD && op <= OP_I_DIV)
                 || op == OP_GET_ADDR || op == OP_LOAD
@@ -319,44 +321,81 @@ static void compute_liveness(RAState* rs) {
             ls_union(&rs->live_in[bi], &rs->gen[bi], &tmp);
         }
     }
-}
+
+    }
 
 /* ================================================================== */
 /*  Interference graph                                                 */
 /* ================================================================== */
 
+static inline bool* adj_ptr(RAState* rs, int a, int b) {
+    return &rs->adj[a * rs->n_vals + b];
+}
+
+static void add_interf(RAState* rs, int a, int b) {
+    if (a < 0 || b < 0 || a == b) return;
+    bool* p = adj_ptr(rs, a, b);
+    if (!*p) {
+        *p = true;
+        *adj_ptr(rs, b, a) = true;
+        rs->degree[a]++;
+        rs->degree[b]++;
+    }
+}
+
 static void build_interference(RAState* rs) {
     int nv = rs->n_vals;
     memset(rs->degree, 0, sizeof(rs->degree));
-    memset(rs->adj,   0, sizeof(rs->adj));
+    memset(rs->adj, 0, nv * nv * sizeof(bool));
 
-    /* Two values interfere if they are simultaneously live at the
-       exit of any basic block.  A live range is the set of BBs
-       where the value is live.  We use the conservative approximation:
-       if both x and y are in live_out of some BB, they interfere. */
+    /* Per-instruction liveness within each BB for fine-grained
+       interference: a def interferes with all values live at that point. */
     for (int bi = 0; bi < rs->n_bb; bi++) {
-        int* live = NULL;
-        int count = 0;
-        int live_buf[MAX_VALS];
-        live = live_buf;
+        Value* bb = rs->bbs[bi];
+        LiveSet cur;
+        ls_copy(&cur, &rs->live_in[bi]);
 
+        Value* inst = bb->u.bb.inst_head;
+        while (inst) {
+            int uses[8];
+            int nu = inst_uses(rs, inst, uses, 8);
+            int d = inst_def(rs, inst);
+
+            /* Def interferes with all currently-live values */
+            if (d >= 0) {
+                for (int v = 0; v < nv; v++) {
+                    if (ls_test(&cur, v))
+                        add_interf(rs, d, v);
+                }
+                /* Remove old instance from cur (if present) */
+                ls_clr(&cur, d);
+            }
+
+            /* Uses become live */
+            for (int u = 0; u < nu; u++)
+                ls_set(&cur, uses[u]);
+
+            /* Def becomes live after the instruction */
+            if (d >= 0)
+                ls_set(&cur, d);
+
+            inst = inst->u.inst.nxt;
+        }
+    }
+
+    /* Also conservatively add interferences for live_out ∩ live_in
+       (inter-BB liveness at BB boundaries). */
+    for (int bi = 0; bi < rs->n_bb; bi++) {
+        int live_buf[MAX_VALS];
+        int count = 0;
         for (int v = 0; v < nv; v++) {
             if (ls_test(&rs->live_out[bi], v) || ls_test(&rs->live_in[bi], v)) {
-                live[count++] = v;
+                live_buf[count++] = v;
             }
         }
-
-        for (int i = 0; i < count; i++) {
-            for (int j = i + 1; j < count; j++) {
-                int a = live[i], b = live[j];
-                if (!rs->adj[a][b]) {
-                    rs->adj[a][b] = true;
-                    rs->adj[b][a] = true;
-                    rs->degree[a]++;
-                    rs->degree[b]++;
-                }
-            }
-        }
+        for (int i = 0; i < count; i++)
+            for (int j = i + 1; j < count; j++)
+                add_interf(rs, live_buf[i], live_buf[j]);
     }
 }
 
@@ -370,18 +409,18 @@ static int spill_cost(RAState* rs, int v) {
            * (rs->loop_depth[v] * 10 + 1);
 }
 
-static void simplify(RAState* rs) {
+static void simplify(RAState* rs, int K_eff) {
     int nv = rs->n_vals;
     rs->simplify_top = 0;
     bool removed[MAX_VALS];
     memset(removed, 0, sizeof(removed));
 
     for (int i = 0; i < nv; i++) {
-        /* Find a node with degree < K */
+        /* Find a node with degree < K_eff */
         int best = -1;
         for (int v = 0; v < nv; v++) {
             if (!removed[v] && rs->colour[v] >= 0
-                && rs->degree[v] < K) {
+                && rs->degree[v] < K_eff) {
                 best = v;
                 break;
             }
@@ -394,7 +433,7 @@ static void simplify(RAState* rs) {
 
             /* Decrease degree of neighbours */
             for (int u = 0; u < nv; u++) {
-                if (!removed[u] && rs->adj[best][u])
+                if (!removed[u] && *adj_ptr(rs, best, u))
                     rs->degree[u]--;
             }
         } else {
@@ -418,7 +457,7 @@ static void simplify(RAState* rs) {
                 removed[spill] = true;
 
                 for (int u = 0; u < nv; u++) {
-                    if (!removed[u] && rs->adj[spill][u])
+                    if (!removed[u] && *adj_ptr(rs, spill, u))
                         rs->degree[u]--;
                 }
             } else {
@@ -428,7 +467,7 @@ static void simplify(RAState* rs) {
     }
 }
 
-static void select_colours(RAState* rs) {
+static void select_colours(RAState* rs, int K_eff, int colour_base) {
     int nv = rs->n_vals;
 
     /* Restore adjacency for all non-spilled nodes */
@@ -452,15 +491,16 @@ static void select_colours(RAState* rs) {
         bool used[K];
         memset(used, 0, sizeof(used));
         for (int u = 0; u < nv; u++) {
-            if (active[u] && rs->adj[v][u] && rs->colour[u] >= 0)
+            if (active[u] && *adj_ptr(rs, v, u) && rs->colour[u] >= 0)
                 used[rs->colour[u]] = true;
         }
 
-        /* Assign first free colour */
-        int c = 0;
-        while (c < K && used[c]) c++;
+        /* Assign first free colour in [colour_base, colour_base+K_eff) */
+        int c = colour_base;
+        int limit = colour_base + K_eff;
+        while (c < limit && used[c]) c++;
 
-        if (c < K) {
+        if (c < limit) {
             rs->colour[v] = c;
             active[v] = true;
         } else {
@@ -531,6 +571,17 @@ RegAllocResult* allocate_registers(Value* func) {
         return NULL;
     }
 
+    /* Allocate adjacency matrix (n_vals × n_vals) */
+    rs.adj = (bool*)calloc(rs.n_vals * rs.n_vals, sizeof(bool));
+    if (!rs.adj) {
+        free(rs.bbs);
+        free(rs.gen);
+        free(rs.kill);
+        free(rs.live_in);
+        free(rs.live_out);
+        return NULL;
+    }
+
     /* Initialise colours to "available for allocation" (-2 = unprocessed) */
     for (int i = 0; i < rs.n_vals; i++)
         rs.colour[i] = -2;
@@ -546,8 +597,28 @@ RegAllocResult* allocate_registers(Value* func) {
     /* Reset colours to "allocatable" */
     for (int i = 0; i < rs.n_vals; i++)
         rs.colour[i] = 0;
-    simplify(&rs);
-    select_colours(&rs);
+
+    int colour_base = 0;  /* caller-saved: $t0-$t7 */
+
+    /* For functions with calls, only use callee-saved regs ($s0-$s7)
+       since caller-saved regs would be clobbered across calls. */
+    int K_eff = K;
+    bool has_calls = false;
+    for (int bi = 0; bi < rs.n_bb; bi++) {
+        Value* inst = rs.bbs[bi]->u.bb.inst_head;
+        while (inst) {
+            if (inst->u.inst.opcode == OP_CALL) { has_calls = true; break; }
+            inst = inst->u.inst.nxt;
+        }
+        if (has_calls) break;
+    }
+    if (has_calls) {
+        K_eff = 8;
+        colour_base = REG_CALLEE_BASE;  /* $s0-$s7 */
+    }
+
+    simplify(&rs, K_eff);
+    select_colours(&rs, K_eff, colour_base);
 
     /* Step 6: build result */
     RegAllocResult* result = build_result(&rs);
@@ -558,6 +629,7 @@ RegAllocResult* allocate_registers(Value* func) {
     free(rs.kill);
     free(rs.live_in);
     free(rs.live_out);
+    free(rs.adj);
 
     return result;
 }
