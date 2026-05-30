@@ -458,16 +458,12 @@ static void emit_arg(CG* cg, Value* inst) {
 static void emit_call(CG* cg, Value* inst) {
     Value* func_val = inst->u.inst.ops[0];  /* VK_FUNCTION */
 
-    /* Consume all ARGs pushed since the last CALL marker (arg_tos).
-       This tracks the natural pairing: each CALL consumes the ARGs
-       that appear between it and the previous CALL, correctly
-       handling nested and sequential call expressions. */
-    int base = cg->arg_tos;
-    int n = cg->arg_count - base;
+    /* Consume all ARGs pushed since the last CALL.  This correctly
+       handles both sequential calls and nested calls by tracking
+       the boundary between call sequences. */
+    int n = cg->arg_count;
 
     for (int i = 0; i < n; i++) {
-        /* ARGs pushed right-to-left: buf[last]=first_param, buf[first]=last_param.
-           Reverse iteration: buf[arg_count-1-i] → first param at i=0 ($a0). */
         int buf_idx = cg->arg_count - 1 - i;
         Value* arg = cg->arg_buf[buf_idx];
         load_val(cg, arg, R_T8);
@@ -495,9 +491,8 @@ static void emit_call(CG* cg, Value* inst) {
         store_val(cg, inst, R_V0);
     }
 
-    /* Pop consumed args; advance marker for next call */
-    cg->arg_count = base;
-    cg->arg_tos   = base;
+    /* Pop all consumed args */
+    cg->arg_count = 0;
 }
 
 static void emit_read(CG* cg, Value* inst) {
@@ -701,7 +696,7 @@ static void codegen_function(CG* cg, Value* func) {
 
         Value* inst = bb->u.bb.inst_head;
         cg->arg_count = 0;
-        cg->arg_tos   = 0;
+        ;
         while (inst) {
             Opcode op = inst->u.inst.opcode;
 

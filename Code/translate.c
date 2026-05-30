@@ -72,7 +72,8 @@ void translate_FunDec(IRBuilder* builder, ASTNode* node, Type* ret_type) {
   if (node->child_count == 4) {
     translate_VarList_Params(builder, node->children[2]);
   }
-}
+
+  }
 
 void translate_VarList_Params(IRBuilder* builder, ASTNode* node) {
   if (node == NULL) return;
@@ -526,39 +527,26 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
   return NULL;
 }
 
-/* Evaluate all argument expressions right-to-left, collecting their
-   values, then emit ARG instructions in a contiguous right-to-left
-   block.  This prevents inner CALL instructions from interleaving
-   with ARGs belonging to the outer call. */
-static void collect_arg_vals(IRBuilder* builder, ASTNode* node,
-                              Value** out, int* count) {
+/* Evaluate all argument expressions first (generating inner calls),
+   then emit ARG instructions contiguously.  This prevents inner CALL
+   sequences from interleaving with outer-call ARGs. */
+static void eval_and_collect_args(IRBuilder* builder, ASTNode* node,
+                                   Value** out, int* count) {
   if (node == NULL) return;
-  // Args: Exp COMMA Args | Exp
   if (node->child_count == 3) {
-    collect_arg_vals(builder, node->children[2], out, count);
+    eval_and_collect_args(builder, node->children[2], out, count);
   }
-  Value* val = translate_Exp(builder, node->children[0]);
-  /* Force VK_INST results into a temp variable so the ARG references
-     a stable slot, not an intermediate that inner calls might clobber. */
-  if (val->vk == VK_INST) {
-    Value* tmp = create_temp_var(val->tp);
-    build_assign(builder, tmp, val);
-    val = tmp;
-  }
-  out[(*count)++] = val;
+  out[(*count)++] = translate_Exp(builder, node->children[0]);
 }
 
 void translate_Args(IRBuilder* builder, ASTNode* node) {
   if (node == NULL) return;
-
-  /* Phase 1: evaluate all arg expressions (generates inner calls). */
-  Value* arg_vals[32];
+  Value* args[32];
   int n = 0;
-  collect_arg_vals(builder, node, arg_vals, &n);
-
-  /* Phase 2: emit ARG instructions in right-to-left order
-     (collected in right-to-left: first=rightmost, last=leftmost). */
+  /* Phase 1: evaluate all args, producing inner CALL instructions */
+  eval_and_collect_args(builder, node, args, &n);
+  /* Phase 2: emit ARGs in right-to-left order */
   for (int i = 0; i < n; i++) {
-    build_arg(builder, arg_vals[i]);
+    build_arg(builder, args[i]);
   }
 }
