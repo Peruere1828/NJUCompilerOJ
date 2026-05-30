@@ -44,8 +44,12 @@ STAGES_CONFIG = [
             ("STAGE_THREE_REQ_ONE", "可以出现结构体类型的变量以及函数参数"),
             ("STAGE_THREE_REQ_TWO", "可以出现高维数组类型变量以及一维数组类型的函数参数")
         ]
+    },
+    {
+        "macro": "STAGE_FOUR",
+        "reqs": []
     }
-    # 后续可在此继续添加 STAGE_FOUR 等
+    # 后续可在此继续添加 STAGE_FIVE 等
 ]
 
 CONFIG_PATH = "Code/config.h"
@@ -107,6 +111,8 @@ def run_test(stage_idx, req_idx):
             test_cmd = f"(cd ./test_framework/{test_dir} && python3 test.py -r ../../parser -e extend{req_idx} -c) >> build.log 2>&1"
         else:
             test_cmd = f"(cd ./test_framework/{test_dir} && python3 test.py -r ../../parser -e both -ac) >> build.log 2>&1"
+    elif stage_idx == 4:
+        test_cmd = f"(cd ./Test/phase4 && python3 test.py -r ../../parser -e base -c) >> build.log 2>&1"
             
     run_cmd(test_cmd, f"Test Stage {stage_idx} Req {req_idx}")
 

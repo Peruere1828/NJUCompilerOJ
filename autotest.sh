@@ -40,7 +40,7 @@ echo "RUNNING TESTS..."
 cd ..
 chmod +x parser
 
-if [ "$1" == "p3" ]; then
+if [ "$1" == "p3" ] || [ "$1" == "p4" ]; then
     rm -rf "$TEST_DIR/tmp"
     mkdir -p "$TEST_DIR/tmp"
 fi
@@ -52,6 +52,9 @@ for test_file in $TEST_DIR/*.cmm; do
     if [ "$1" == "p3" ]; then
         base=$(basename "$test_file" .cmm)
         ./parser "$test_file" "$TEST_DIR/tmp/$base.ir"
+    elif [ "$1" == "p4" ]; then
+        base=$(basename "$test_file" .cmm)
+        ./parser "$test_file" "$TEST_DIR/tmp/$base.s" "$TEST_DIR/tmp/$base.ir"
     else
         ./parser "$test_file"
     fi
