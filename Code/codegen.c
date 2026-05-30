@@ -39,6 +39,7 @@
 
 #include "codegen.h"
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -159,12 +160,14 @@ static void analyse_frame(CG* cg) {
             if (op == OP_DEC) {
                 Value* var  = inst->u.inst.ops[0];
                 int    size = inst->u.inst.ops[1]->u.int_val;
+                assert(var->id >= 0 && var->id < 0x4000);
                 cg->var_slot[var->id] = cg->next_var_off;
                 cg->next_var_off += size;
             }
 
             if (op == OP_PARAM) {
                 Value* var = inst->u.inst.ops[0];
+                assert(var->id >= 0 && var->id < 0x4000);
                 if (cg->var_slot[var->id] == -1) {
                     cg->var_slot[var->id] = cg->next_var_off;
                     cg->next_var_off += 4;
@@ -240,6 +243,7 @@ static void analyse_frame(CG* cg) {
     int body = align8(cg->next_var_off);
     cg->arg_area = cg->has_calls ? 16 : 0;
     cg->frame_size = control + body + cg->arg_area;
+    assert(cg->frame_size < 1048576);  /* 1 MB stack limit */
 
     cg->fp_off = cg->frame_size - 8;
     cg->ra_off = cg->frame_size - 4;
@@ -262,7 +266,9 @@ static void load_val(CG* cg, Value* val, int dst_reg) {
         fprintf(cg->out, "\t# FLOAT const unsupported\n");
         return;
     case VK_VAR: {
+        assert(val->id >= 0 && val->id < 0x4000);
         int off = cg->var_slot[val->id];
+        assert(off >= 0 && off < cg->frame_size);
         fprintf(cg->out, "\tlw %s, %d($fp)\n", reg_name(dst_reg), off);
         return;
     }
@@ -294,7 +300,9 @@ static void load_val(CG* cg, Value* val, int dst_reg) {
 static void store_val(CG* cg, Value* dest, int src_reg) {
     switch (dest->vk) {
     case VK_VAR: {
+        assert(dest->id >= 0 && dest->id < 0x4000);
         int off = cg->var_slot[dest->id];
+        assert(off >= 0 && off < cg->frame_size);
         fprintf(cg->out, "\tsw %s, %d($fp)\n", reg_name(src_reg), off);
         return;
     }

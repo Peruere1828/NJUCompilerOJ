@@ -202,15 +202,7 @@ static void remove_phi_nodes(Value* func) {
              splitting).  Use the phi's own result as a safe fallback — this
              preserves the existing value along the new edge rather than
              crashing the compiler. */
-          if (src_val == NULL) {
-            /* Should never happen after the CFG terminator fix,
-               but keep as a safety net with deterministic 0 default. */
-            static Value zero_const;
-            zero_const.vk = VK_CONST_INT;
-            zero_const.tp = phi_insts[i]->tp;
-            zero_const.u.int_val = 0;
-            src_val = &zero_const;
-          }
+          assert(src_val != NULL);  /* CFG terminator fix should prevent this */
           srcs[i] = src_val;
         }
 
