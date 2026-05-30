@@ -526,12 +526,39 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
   return NULL;
 }
 
-void translate_Args(IRBuilder* builder, ASTNode* node) {
+/* Evaluate all argument expressions right-to-left, collecting their
+   values, then emit ARG instructions in a contiguous right-to-left
+   block.  This prevents inner CALL instructions from interleaving
+   with ARGs belonging to the outer call. */
+static void collect_arg_vals(IRBuilder* builder, ASTNode* node,
+                              Value** out, int* count) {
   if (node == NULL) return;
   // Args: Exp COMMA Args | Exp
   if (node->child_count == 3) {
-    translate_Args(builder, node->children[2]);
+    collect_arg_vals(builder, node->children[2], out, count);
   }
-  Value* arg_val = translate_Exp(builder, node->children[0]);
-  build_arg(builder, arg_val);
+  Value* val = translate_Exp(builder, node->children[0]);
+  /* Force VK_INST results into a temp variable so the ARG references
+     a stable slot, not an intermediate that inner calls might clobber. */
+  if (val->vk == VK_INST) {
+    Value* tmp = create_temp_var(val->tp);
+    build_assign(builder, tmp, val);
+    val = tmp;
+  }
+  out[(*count)++] = val;
+}
+
+void translate_Args(IRBuilder* builder, ASTNode* node) {
+  if (node == NULL) return;
+
+  /* Phase 1: evaluate all arg expressions (generates inner calls). */
+  Value* arg_vals[32];
+  int n = 0;
+  collect_arg_vals(builder, node, arg_vals, &n);
+
+  /* Phase 2: emit ARG instructions in right-to-left order
+     (collected in right-to-left: first=rightmost, last=leftmost). */
+  for (int i = 0; i < n; i++) {
+    build_arg(builder, arg_vals[i]);
+  }
 }
