@@ -61,6 +61,39 @@ static void cleanup_dead_insts_and_rebuild_cfg(Value* func) {
   }
   // 清理完虚假的 tail 指令后，重新构建准确的 CFG
   build_CFG(func);
+
+  /* After dead-code removal, some blocks may lack terminators
+     (when an IF_GOTO was folded to NOP and the following GOTO
+     was in dead zone).  Add explicit GOTOs so the CFG has no
+     implicit fall-through edges — this prevents phi/predecessor
+     mismatches in remove_phi_nodes. */
+  bb = func->u.func.bb_head;
+  while (bb != NULL) {
+    Value* tail = bb->u.bb.inst_tail;
+    if (!tail || (tail->u.inst.opcode != OP_GOTO
+                  && tail->u.inst.opcode != OP_RETURN)) {
+      Value* next = bb->u.bb.next_bb;
+      if (next) {
+        Value* g = create_value(VK_INST, NULL);
+        g->u.inst.opcode   = OP_GOTO;
+        g->u.inst.num_ops  = 1;
+        g->u.inst.ops      = (Value**)malloc(sizeof(Value*));
+        g->u.inst.ops[0]   = next;
+        g->u.inst.parent_bb = bb;
+        g->u.inst.pre = bb->u.bb.inst_tail;
+        g->u.inst.nxt = NULL;
+        if (bb->u.bb.inst_tail)
+          bb->u.bb.inst_tail->u.inst.nxt = g;
+        else
+          bb->u.bb.inst_head = g;
+        bb->u.bb.inst_tail = g;
+        add_use(next, g, 0);
+      }
+    }
+    bb = bb->u.bb.next_bb;
+  }
+  /* Rebuild CFG again to pick up the new explicit edges */
+  build_CFG(func);
 }
 
 // 对于一条CFG边u->v，如果u的后继>=2且v的前驱>=2，此时phi节点的还原成赋值
@@ -170,7 +203,13 @@ static void remove_phi_nodes(Value* func) {
              preserves the existing value along the new edge rather than
              crashing the compiler. */
           if (src_val == NULL) {
-            src_val = phi;
+            /* Should never happen after the CFG terminator fix,
+               but keep as a safety net with deterministic 0 default. */
+            static Value zero_const;
+            zero_const.vk = VK_CONST_INT;
+            zero_const.tp = phi_insts[i]->tp;
+            zero_const.u.int_val = 0;
+            src_val = &zero_const;
           }
           srcs[i] = src_val;
         }
