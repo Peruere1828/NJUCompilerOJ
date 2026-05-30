@@ -141,11 +141,30 @@ static int align8(int n) { return (n + 7) & ~7; }
 static void analyse_frame(CG* cg) {
     Value* func = cg->func;
     cg->has_calls = false;
-    cg->next_var_off = 0;
 
     /* Initialise sentinels: -1 = not yet assigned */
     memset(cg->var_slot,  -1, sizeof(cg->var_slot));
     memset(cg->temp_slot, -1, sizeof(cg->temp_slot));
+
+    /* ---- Pre-scan: detect has_calls before laying out frame ---- */
+    {
+        Value* bb = func->u.func.bb_head;
+        while (bb) {
+            Value* inst = bb->u.bb.inst_head;
+            while (inst) {
+                if (inst->u.inst.opcode == OP_CALL)
+                    cg->has_calls = true;
+                inst = inst->u.inst.nxt;
+            }
+            bb = bb->u.bb.next_bb;
+        }
+    }
+
+    /* Outgoing arg build area: 16 bytes (4 slots) at $fp+0..$fp+15.
+       Locals start above that so the 5th+ CALL arguments at 0($sp)
+       don't clobber the first variable. */
+    cg->arg_area = cg->has_calls ? 16 : 0;
+    cg->next_var_off = cg->arg_area;
 
     /* ---- Sub-pass 1a: DEC and PARAM ---- */
     Value* bb = func->u.func.bb_head;
@@ -153,9 +172,6 @@ static void analyse_frame(CG* cg) {
         Value* inst = bb->u.bb.inst_head;
         while (inst) {
             Opcode op = inst->u.inst.opcode;
-
-            if (op == OP_CALL)
-                cg->has_calls = true;
 
             if (op == OP_DEC) {
                 Value* var  = inst->u.inst.ops[0];
@@ -240,9 +256,10 @@ static void analyse_frame(CG* cg) {
     if (cg->has_calls) control += 4;
     control = align8(control);
 
+    /* body already includes the arg_area at the bottom ($fp+0).
+       $fp+0..$fp+arg_area-1 = reserved for outgoing args 5+ */
     int body = align8(cg->next_var_off);
-    cg->arg_area = cg->has_calls ? 16 : 0;
-    cg->frame_size = control + body + cg->arg_area;
+    cg->frame_size = control + body;
     assert(cg->frame_size < 1048576);  /* 1 MB stack limit */
 
     cg->fp_off = cg->frame_size - 8;
@@ -677,8 +694,7 @@ static void codegen_function(CG* cg, Value* func) {
             if (cg->has_calls) control += 4;
             control = align8(control);
             int body = align8(cg->next_var_off);
-            cg->arg_area = cg->has_calls ? 16 : 0;
-            cg->frame_size = control + body + cg->arg_area;
+            cg->frame_size = control + body;
             cg->fp_off = cg->frame_size - 8;
             cg->ra_off = cg->frame_size - 4;
 
