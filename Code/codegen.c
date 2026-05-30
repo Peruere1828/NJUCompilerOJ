@@ -43,7 +43,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "AST.h"   /* RelopKind */
+#include "AST.h"        /* RelopKind */
+#include "reg_alloc.h"
 #include "translate.h"
 
 /* ------------------------------------------------------------------ */
@@ -72,8 +73,9 @@ typedef struct {
     int    arg_count;             /* number of ARGs in current call sequence */
 
     /* ---- Phase 2 ---- */
-    int    phys_reg[0x4000];     /* value id -> MIPS reg (0..K-1 pinned precolour) */
+    int    phys_reg[0x4000];     /* value id -> MIPS reg (0..K-1) or -1 */
     int    spill_off[0x4000];    /* value id -> spill offset from $fp */
+    unsigned char callee_saved_map; /* bit i set if $s_i is used */
     int    num_saved_s;
     int    saved_s[8];           /* list of $sX regs actually used */
 } CG;
@@ -597,6 +599,48 @@ static void codegen_function(CG* cg, Value* func) {
 
     /* Pass 1 */
     analyse_frame(cg);
+
+    /* Phase 2: run register allocation before emission */
+    if (cg->phase == 2) {
+        RegAllocResult* ra = allocate_registers(func);
+        if (ra) {
+            /* Populate phys_reg and spill_off tables */
+            for (int i = 0; i < ra->n_vals; i++) {
+                int vid = ra->value_id[i];
+                if (ra->spilled[i]) {
+                    cg->phys_reg[vid]  = -1;
+                    cg->spill_off[vid] = cg->next_var_off + ra->stack_offset[i];
+                } else {
+                    cg->phys_reg[vid]  = ra->phys_reg[i];
+                    cg->spill_off[vid] = 0;
+                }
+            }
+            /* Extend frame for spill area */
+            cg->next_var_off += ra->spill_area_size;
+
+            /* Track callee-saved registers */
+            cg->callee_saved_map = ra->callee_map;
+            cg->num_saved_s = 0;
+            for (int s = 0; s < 8; s++) {
+                if (ra->callee_map & (1 << s))
+                    cg->saved_s[cg->num_saved_s++] = REG_CALLEE_BASE + s;
+            }
+            /* Extend frame for saved $s registers */
+            cg->next_var_off += cg->num_saved_s * 4;
+
+            /* Recalculate frame size */
+            int control = 8;
+            if (cg->has_calls) control += 4;
+            control = align8(control);
+            int body = align8(cg->next_var_off);
+            cg->arg_area = cg->has_calls ? 16 : 0;
+            cg->frame_size = control + body + cg->arg_area;
+            cg->fp_off = cg->frame_size - 8;
+            cg->ra_off = cg->frame_size - 4;
+
+            free_reg_alloc_result(ra);
+        }
+    }
 
     /* Pass 2 */
     emit_prologue(cg);

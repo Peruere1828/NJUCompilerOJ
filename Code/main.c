@@ -107,7 +107,7 @@ int main(int argc, char** argv) {
 
 #ifdef STAGE_FOUR
   if (ir_module != NULL) {
-    generate_mips(ir_module, out, 1);  // phase 1: stack-based
+    generate_mips(ir_module, out, 1);  // phase: 1=stack-based, 2=graph-colouring
   }
   fclose(out);
 
