@@ -116,6 +116,7 @@ static void split_critical_edges(Value* func) {
 }
 
 extern int global_var_counter;  // 使用全局计数器分配 tmp
+extern int global_inst_counter;
 
 // 辅助函数：将 new_inst 插入到 target_inst 的前面
 static void insert_inst_before(Value* bb, Value* target_inst, Value* new_inst) {
@@ -185,6 +186,7 @@ static void remove_phi_nodes(Value* func) {
             tmp_var->id = ++global_var_counter;
 
             Value* copy_to_tmp = create_value(VK_INST, phi_insts[i]->tp);
+            copy_to_tmp->id = ++global_inst_counter;
             copy_to_tmp->u.inst.opcode = OP_ASSIGN;
             copy_to_tmp->u.inst.num_ops = 2;
             copy_to_tmp->u.inst.ops = (Value**)malloc(sizeof(Value*) * 2);
@@ -207,6 +209,7 @@ static void remove_phi_nodes(Value* func) {
           Value* dest = phi_insts[i];
 
           Value* final_assign = create_value(VK_INST, phi_insts[i]->tp);
+          final_assign->id = ++global_inst_counter;
           final_assign->u.inst.opcode = OP_ASSIGN;
           final_assign->u.inst.num_ops = 2;
           final_assign->u.inst.ops = (Value**)malloc(sizeof(Value*) * 2);

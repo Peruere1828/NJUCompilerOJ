@@ -28,8 +28,8 @@ extern void check_unclosed_comment();
 
 int main(int argc, char** argv) {
 #if defined(STAGE_FOUR)
-  if (argc <= 3) {
-    printf("Usage: %s <filename> <output_s> <output_ir>\n", argv[0]);
+  if (argc <= 2) {
+    printf("Usage: %s <filename> <output_s>\n", argv[0]);
     return 1;
   }
 #elif defined(STAGE_ONE) || defined(STAGE_TWO)
@@ -110,16 +110,6 @@ int main(int argc, char** argv) {
     generate_mips(ir_module, out, 1);  // phase: 1=stack-based, 2=graph-colouring
   }
   fclose(out);
-
-  FILE* ir_out = fopen(argv[3], "w");
-  if (!ir_out) {
-    perror(argv[3]);
-    return 1;
-  }
-  if (ir_module != NULL) {
-    print_module(ir_module, ir_out);
-  }
-  fclose(ir_out);
   goto End;
 #endif
 

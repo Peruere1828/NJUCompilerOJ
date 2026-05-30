@@ -193,6 +193,23 @@ static void analyse_frame(CG* cg) {
         bb = bb->u.bb.next_bb;
     }
 
+    /* ---- Sub-pass 1b2: OP_ASSIGN destinations that are VK_INST (phi results) ---- */
+    bb = func->u.func.bb_head;
+    while (bb) {
+        Value* inst = bb->u.bb.inst_head;
+        while (inst) {
+            if (inst->u.inst.opcode == OP_ASSIGN) {
+                Value* dest = inst->u.inst.ops[0];
+                if (dest && dest->vk == VK_INST && cg->temp_slot[dest->id] == -1) {
+                    cg->temp_slot[dest->id] = cg->next_var_off;
+                    cg->next_var_off += 4;
+                }
+            }
+            inst = inst->u.inst.nxt;
+        }
+        bb = bb->u.bb.next_bb;
+    }
+
     /* ---- Sub-pass 1c: temp slots for every VK_INST that could be a result ---- */
     if (cg->phase == 1) {
         bb = func->u.func.bb_head;
@@ -416,11 +433,9 @@ static void emit_call(CG* cg, Value* inst) {
     int n = cg->arg_count;
 
     /* Emit args in LEFT-to-RIGHT order ($a0 = first param, etc.).
-       Since ARGs were buffered in right-to-left order, we iterate
-       backwards through the buffer. */
+       Since ARGs were buffered in right-to-left order, buffer = [last, ..., first].
+       Reverse iterate: buf[n-1-i] gives first param at i=0. */
     for (int i = 0; i < n; i++) {
-        /* i=0 → last buffered arg → first param → $a0
-           i=1 → second-to-last → second param → $a1 */
         int buf_idx = n - 1 - i;
         Value* arg = cg->arg_buf[buf_idx];
         load_val(cg, arg, R_T8);

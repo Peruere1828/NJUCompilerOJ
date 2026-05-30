@@ -118,19 +118,17 @@ def run_single_test(cmm_file, expect_pass, parser_path, results):
     rel_path = cmm_file.relative_to(LAB3_TESTS)
     stem = str(rel_path).replace(os.sep, '_').replace('.cmm', '')
     workdir = SCRIPT_DIR / "workdir"
-    ir_file = workdir / f"{stem}.ir"
     s_file = workdir / f"{stem}.s"
     json_file = cmm_file.with_suffix('.json')
 
-    # Clean up stale files
-    for f in (ir_file, s_file):
-        if f.exists():
-            f.unlink()
+    # Clean up stale file
+    if s_file.exists():
+        s_file.unlink()
 
     # Step 1: Compile
     try:
         proc = subprocess.run(
-            [parser_path, str(cmm_file), str(s_file), str(ir_file)],
+            [parser_path, str(cmm_file), str(s_file)],
             timeout=args.timeout,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT
@@ -146,60 +144,34 @@ def run_single_test(cmm_file, expect_pass, parser_path, results):
         return
 
     if expect_pass:
-        # Step 2: Verify outputs exist
+        # Step 2: Verify .s output exists
         if not s_file.exists():
             results.add(rel_path, False, "Should generate .s but missing")
             return
-        if not ir_file.exists() and not args.spim_only:
-            results.add(rel_path, False, "Should generate .ir but missing")
-            return
 
-        irsim_ok = True
         spim_ok = True
-        total_inst = 0
         messages = []
 
-        # Step 3: irsim verification
-        if not args.spim_only and ir_file.exists():
-            try:
-                chk = subprocess.run(
-                    ["python3", str(CHECK_IRSIM), str(ir_file),
-                     str(json_file), str(IRSIM_BIN)],
-                    timeout=args.timeout,
-                    capture_output=True,
-                    text=True
-                )
-                if chk.returncode == 0:
-                    total_inst = int(chk.stdout.strip())
-                    messages.append(f"irsim OK ({total_inst} inst)")
-                else:
-                    irsim_ok = False
-                    messages.append(f"irsim FAIL: {chk.stderr.strip()[-150:]}")
-            except subprocess.TimeoutExpired:
-                irsim_ok = False
-                messages.append("irsim TLE")
-
-        # Step 4: spim verification
-        if not args.irsim_only and s_file.exists():
-            try:
-                chk = subprocess.run(
-                    ["python3", str(CHECK_SPIM), str(s_file),
-                     str(json_file), str(args.timeout)],
-                    timeout=args.timeout + 5,  # extra buffer for spim
-                    capture_output=True,
-                    text=True
-                )
-                if chk.returncode == 0:
-                    messages.append("spim OK")
-                else:
-                    spim_ok = False
-                    messages.append(f"spim FAIL: {chk.stderr.strip()[-150:]}")
-            except subprocess.TimeoutExpired:
+        # Step 3: spim verification
+        try:
+            chk = subprocess.run(
+                ["python3", str(CHECK_SPIM), str(s_file),
+                 str(json_file), str(args.timeout)],
+                timeout=args.timeout + 5,
+                capture_output=True,
+                text=True
+            )
+            if chk.returncode == 0:
+                messages.append("spim OK")
+            else:
                 spim_ok = False
-                messages.append("spim TLE")
+                messages.append(f"spim FAIL: {chk.stderr.strip()[-150:]}")
+        except subprocess.TimeoutExpired:
+            spim_ok = False
+            messages.append("spim TLE")
 
-        passed = irsim_ok and spim_ok
-        results.add(rel_path, passed, "; ".join(messages), total_inst)
+        passed = spim_ok
+        results.add(rel_path, passed, "; ".join(messages), 0)
     else:
         # expect_fail: compiler should reject this input
         if not s_file.exists():
@@ -228,15 +200,12 @@ def run_smoke_tests(parser_path, timeout):
     for cmm in cmm_files:
         name = cmm.stem
         s_file = workdir / f"smoke_{name}.s"
-        ir_file = workdir / f"smoke_{name}.ir"
-
-        for f in (s_file, ir_file):
-            if f.exists():
-                f.unlink()
+        if s_file.exists():
+            s_file.unlink()
 
         try:
             proc = subprocess.run(
-                [parser_path, str(cmm), str(s_file), str(ir_file)],
+                [parser_path, str(cmm), str(s_file)],
                 timeout=timeout,
                 capture_output=True,
                 text=True
@@ -291,9 +260,8 @@ def main():
         run_smoke_tests(str(parser_path), args.timeout)
         return
 
-    # Ensure irsim is built
-    print("Making (Updating) irsim...")
-    build_irsim()
+    # No irsim needed for spim-only testing
+    print(f"spim mode, timeout={args.timeout}s, jobs={args.jobs}")
 
     workdir = SCRIPT_DIR / "workdir"
     workdir.mkdir(exist_ok=True)
@@ -330,9 +298,6 @@ def main():
 
     print(f"Tests to run: {len(should_pass)} pass + {len(should_fail)} fail "
           f"(extend={args.extend}, advance={args.advance}, prf={args.prf})")
-    print(f"Timeout: {args.timeout}s, Jobs: {args.jobs}")
-    print(f"irsim: {'ON' if not args.spim_only else 'OFF'}, "
-          f"spim: {'ON' if not args.irsim_only else 'OFF'}")
     print("-" * 50)
 
     results = Results()

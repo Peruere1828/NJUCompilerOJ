@@ -11,7 +11,7 @@ elif [ "$1" == "p2" ]; then
 elif [ "$1" == "p3" ]; then
     TEST_DIR="Test/phase3"
 elif [ "$1" == "p4" ]; then
-    TEST_DIR="Test/phase4"
+    TEST_DIR="Test/phase4/test_cases"
 elif [ "$1" == "p5" ]; then
     TEST_DIR="Test/phase5"
 else
@@ -54,7 +54,7 @@ for test_file in $TEST_DIR/*.cmm; do
         ./parser "$test_file" "$TEST_DIR/tmp/$base.ir"
     elif [ "$1" == "p4" ]; then
         base=$(basename "$test_file" .cmm)
-        ./parser "$test_file" "$TEST_DIR/tmp/$base.s" "$TEST_DIR/tmp/$base.ir"
+        ./parser "$test_file" "$TEST_DIR/tmp/$base.s"
     else
         ./parser "$test_file"
     fi
