@@ -1,3 +1,13 @@
+/**
+ * optimize_TAC.c — TAC 层面的窥孔优化
+ *
+ * 主要优化（迭代执行直到不动点）：
+ *   1. 常量折叠   — 编译期求值常量表达式 (e.g. 2+3→5)
+ *   2. 代数恒等式 — 消除 x+0, x-0, x*1, x/1, x*0 等
+ *   3. 拷贝传播   — A=B 后用 B 替换对 A 的引用
+ *   4. 死代码消除 — 移除对后面不再使用的变量的赋值
+ */
+
 #include "optimize_TAC.h"
 
 #include <stdlib.h>
@@ -6,6 +16,7 @@
 #include "IR.h"
 #include "IRbuilder.h"
 
+/* 迭代优化直到不动点（最多 10 轮），每轮扫描所有基本块的所有指令 */
 void optimize_TAC(IRModule* ir_module) {
   if (ir_module == NULL) return;
 

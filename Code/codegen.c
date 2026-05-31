@@ -1,40 +1,78 @@
 /**
- * codegen.c — MIPS32 Assembly Code Generator
+ * codegen.c — MIPS32 汇编代码生成器
  *
- * Phase 1: stack-based. Every virtual register and variable lives on the
- * stack frame.  All arithmetic loads operands into $t8/$t9, computes, and
- * stores the result back.  No register allocation is performed.
+ * ============================================================================
+ * 两种模式
+ * ============================================================================
  *
- * Phase 2 (future): graph-colouring register allocation via reg_alloc.c.
+ * Phase 1 — 基于栈 (stack-based)：
+ *   所有变量和临时值都存储在栈帧中。运算时从栈中 load 到 $t8/$t9 暂存器，
+ *   计算后 store 回栈。每条指令独立使用 $t8/$t9——不需要寄存器分配。
+ *   优点：简单直接，易于调试。
+ *   缺点：生成代码有大量冗余的 lw/sw 指令。
  *
- * Stack-frame layout (standard MIPS convention):
+ * Phase 2 — 图着色 (graph-colouring)：
+ *   通过 reg_alloc.c 的 Briggs 图着色算法将 IR 值映射到物理寄存器。
+ *   只有溢出的值才存储在栈上。$t8/$t9 仍然作为指令选择的暂存器。
+ *   优点：显著减少内存访问指令。
+ *   缺点：需要序言/尾声保存 callee-saved 寄存器。
  *
- *   HIGH ADDR   $fp + frame_size - 4  = saved $ra  (only if has_calls)
- *               $fp + frame_size - 8  = saved $fp
- *               $fp + frame_size - 8 - 4*k = saved $sX  (phase 2)
- *               ...
- *               $fp + N               = last local
- *               ...
- *   LOW ADDR    $fp + 0               = first local
+ * ============================================================================
+ * 栈帧布局 (MIPS 标准约定)
+ * ============================================================================
  *
- * Prologue:
- *     addiu $sp, $sp, -FRAME_SIZE
- *     sw    $ra, FRAME_SIZE-4($sp)
- *     sw    $fp, FRAME_SIZE-8($sp)
- *     move  $fp, $sp
+ *   高地址
+ *   ┌──────────────────────────────┐  ← $sp (进入函数前)
+ *   │ caller's stack frame         │
+ *   │   ...                        │
+ *   │   arg 5+ for callee          │  (通过 0($sp), 4($sp)... 传递)
+ *   ├──────────────────────────────┤  ← $sp (进入函数后) / $fp
+ *   │ saved $ra (如果 has_calls)   │  $fp + ra_off
+ *   │ saved $fp                     │  $fp + fp_off
+ *   │ saved $sX (phase 2, 可选的)   │  按需，在 body 顶部
+ *   │   ... locals ...              │
+ *   │ spilled values (phase 2)      │  溢出区
+ *   │ local vars / temps            │
+ *   │ arg build area (16 bytes)     │  $fp + 0  (为 callee 预留)
+ *   │                               │
+ *   低地址
  *
- * Epilogue:
- *     move  $sp, $fp
- *     lw    $fp, FRAME_SIZE-8($sp)
- *     lw    $ra, FRAME_SIZE-4($sp)
- *     addiu $sp, $sp, FRAME_SIZE
- *     jr    $ra
+ *   帧大小 = 控制区(8 或 12 字节, 8对齐) + body(8对齐)
+ *   body 从 $fp+0 开始，包含了:
+ *     - arg_area (16 bytes, 仅 has_calls)
+ *     - 局部变量 (var_slot)
+ *     - 临时值 (temp_slot, phase 1 only)
+ *     - 溢出区 (phase 2)
+ *     - 保存的 $s 寄存器区 (phase 2)
  *
- * Calling convention:
- *   - First 4 integer args in $a0-$a3; rest on stack (right-to-left ARG order)
- *   - Return value in $v0
- *   - $t8, $t9 are scratch registers for instruction selection
- *   - Syscall 1 = print_int, 5 = read_int, 10 = exit, 11 = print_char
+ * ============================================================================
+ * 序言 (Prologue)
+ * ============================================================================
+ *   addiu $sp, $sp, -FRAME_SIZE    # 分配栈帧
+ *   sw    $fp, FRAME_SIZE-8($sp)   # 保存调用者的 $fp
+ *   sw    $ra, FRAME_SIZE-4($sp)   # 保存返回地址（仅当 has_calls）
+ *   move  $fp, $sp                  # 建立新帧指针
+ *   sw    $sX, ...                  # 保存 callee-saved 寄存器 (phase 2)
+ *   # 复制参数到局部变量槽
+ *
+ * ============================================================================
+ * 尾声 (Epilogue)
+ * ============================================================================
+ *   lw    $sX, ...                  # 恢复 callee-saved 寄存器 (phase 2)
+ *   move  $sp, $fp                  # 恢复栈指针
+ *   lw    $fp, FRAME_SIZE-8($sp)   # 恢复调用者的 $fp
+ *   lw    $ra, FRAME_SIZE-4($sp)   # 恢复返回地址
+ *   addiu $sp, $sp, FRAME_SIZE     # 释放栈帧
+ *   jr    $ra                      # 返回
+ *
+ * ============================================================================
+ * 调用约定
+ * ============================================================================
+ *   - 前 4 个整数参数在 $a0-$a3 中传递
+ *   - 剩余参数在栈上传递（从 0($sp) 开始，右到左的 ARG 顺序）
+ *   - 返回值在 $v0 中
+ *   - $t8, $t9 是指令选择的暂存寄存器
+ *   - 系统调用：1=print_int, 5=read_int, 10=exit, 11=print_char
  */
 
 #include "codegen.h"
@@ -49,7 +87,9 @@
 #include "translate.h"
 
 /* ------------------------------------------------------------------ */
-/*  Per-function code-generation context                               */
+/*  CG — 单函数代码生成上下文                                          */
+/*                                                                      */
+/*  每个函数有一个独立的 CG 实例，包含该函数的全部状态。                */
 /* ------------------------------------------------------------------ */
 typedef struct {
     FILE*  out;
@@ -82,7 +122,11 @@ typedef struct {
     int    saved_s[8];           /* list of $sX regs actually used */
 } CG;
 
-/* MIPS register numbers (internal encoding for phase 2 reg. alloc.) */
+/* MIPS 物理寄存器编号（内部编码）。
+   caller-saved ($t0-$t7): 0-7
+   callee-saved ($s0-$s7): 8-15
+   暂存器 ($t8,$t9): 16-17；返回值 ($v0,$v1): 18-19
+   参数 ($a0-$a3): 20-23；特殊 ($ra,$fp,$sp): 24-26 */
 enum {
     R_T0 = 0,  R_T1,  R_T2,  R_T3,  R_T4,  R_T5,  R_T6,  R_T7,
     R_S0,  R_S1,  R_S2,  R_S3,  R_S4,  R_S5,  R_S6,  R_S7,
@@ -105,7 +149,7 @@ static const char* reg_name(int r) {
 }
 
 /* ================================================================== */
-/*  Helpers                                                            */
+/*  辅助函数                                                            */
 /* ================================================================== */
 
 static bool inst_has_result(Value* inst) {
@@ -135,7 +179,22 @@ static const char* epilogue_label(const char* func_name) {
 static int align8(int n) { return (n + 7) & ~7; }
 
 /* ================================================================== */
-/*  Pass 1 — Frame layout analysis                                     */
+/*  Pass 1 — 栈帧布局分析 (Frame Layout Analysis)                      */
+/*                                                                      */
+/*  在生成任何汇编指令之前，先遍历整个函数的 IR 确定：                  */
+/*    1. 是否包含函数调用 (has_calls) — 影响是否保存 $ra               */
+/*    2. 每个变量的栈帧偏移 (var_slot)                                   */
+/*    3. 每个临时值的栈帧偏移 (temp_slot, phase 1 only)                 */
+/*    4. 最终帧大小 (frame_size) — 必须 8 字节对齐                      */
+/*                                                                      */
+/*  分析分为三个子步骤：                                                */
+/*    a) 处理 DEC（变量声明）和 PARAM（函数参数）                       */
+/*    b) 处理 OP_ASSIGN 的目标 VK_INST（SSA 销毁后的 phi 结果）        */
+/*    c) Phase 1 专用：为所有产生结果的指令分配临时槽                   */
+/*                                                                      */
+/*  arg_area: 在 $fp+0 处保留 16 字节作为传出参数区（如果 has_calls）。  */
+/*  这样当需要传递第 5 个及之后的 CALL 参数时，它们写入 0($sp)、         */
+/*  4($sp) 等处，不会覆盖第一个局部变量。                               */
 /* ================================================================== */
 
 static void analyse_frame(CG* cg) {
@@ -267,7 +326,20 @@ static void analyse_frame(CG* cg) {
 }
 
 /* ================================================================== */
-/*  Pass 2 — Primitive: load / store IR values                         */
+/*  Pass 2 — 基本操作：load / store IR 值                              */
+/*                                                                      */
+/*  load_val: 将 IR Value 加载到指定的 MIPS 物理寄存器                  */
+/*    - VK_CONST_INT → li 指令（立即数加载）                            */
+/*    - VK_VAR       → lw 从栈帧偏移加载                                */
+/*    - VK_INST      → Phase 2: 从物理寄存器 move（如果已着色）         */
+/*                      或从溢出区 lw（如果溢出）                        */
+/*                      Phase 1: 从 temp_slot lw                       */
+/*                                                                      */
+/*  store_val: 将 MIPS 物理寄存器中的值存储回 IR 目标                   */
+/*    - VK_VAR       → sw 到栈帧偏移                                    */
+/*    - VK_INST      → Phase 2: move 到分配的物理寄存器（如果已着色）   */
+/*                      或 sw 到溢出区（如果溢出）                       */
+/*                      Phase 1: sw 到 temp_slot                       */
 /* ================================================================== */
 
 /**
@@ -347,26 +419,40 @@ static void store_val(CG* cg, Value* dest, int src_reg) {
 }
 
 /* ================================================================== */
-/*  Pass 2 — Per-instruction emitters                                  */
+/*  Pass 2 — 各指令的汇编发射器 (Per-instruction Emitters)              */
+/*                                                                      */
+/*  每条 IR 指令对应一个 emitter 函数，将 IR 翻译为 MIPS 汇编。          */
+/*  算术指令使用 $t8/$t9 作为暂存器（不在可分配寄存器池中）。            */
+/*                                                                      */
+/*  特殊处理：                                                          */
+/*    - emit_binary: I_DIV 使用 Python 风格的 floor 除法（向负无穷取整）  */
+/*      MIPS 的 div 指令向零取整，需要额外处理符号不同的情况             */
+/*    - emit_arg/emit_call: ARG 按右到左顺序缓冲，在 CALL 时逆序发射     */
+/*      保证 $a0=第1个参数, $a1=第2个参数, ...                          */
+/*    - emit_call: 用户函数名加 '_' 前缀避免与 MIPS 指令名冲突           */
+/*      'main' 保持原名，因为 spim 需要它作为入口点                     */
 /* ================================================================== */
 
 static void emit_binary(CG* cg, Value* inst, const char* mnemonic) {
     load_val(cg, inst->u.inst.ops[0], R_T8);
     load_val(cg, inst->u.inst.ops[1], R_T9);
     if (strcmp(mnemonic, "div") == 0) {
-        /* Python-style floor division, matching irsim semantics.
-           MIPS div truncates toward zero.  After div $t8,$t9 the
-           source regs are unchanged (LO=quot, HI=rem).
-           If remainder≠0 AND signs differ → floor = trunc - 1.
-           Uses only $t8/$t9 (scratch regs not in allocatable pool).
-           Puts lw/move in branch delay slot (always harmless). */
+        /* C-- 语义要求 floor 除法（向负无穷取整），而非 MIPS 默认的向零取整。
+         *
+         * 算法原理：
+         *   MIPS div 指令向零截断，即 trunc(a/b)。
+         *   我们需要 floor(a/b) = trunc(a/b) 当余数为0或结果非负时；
+         *                     = trunc(a/b)-1 当余数≠0 且结果<0 时。
+         *   等价条件：余数≠0 且被除数与除数异号 → floor = trunc - 1
+         *
+         * 仅使用 $t8/$t9（暂存器），不影响可分配寄存器池。 */
         static int div_label = 0;
         int lbl = div_label++;
 
         fprintf(cg->out, "\tdiv %s, %s\n", reg_name(R_T8), reg_name(R_T9));
         fprintf(cg->out, "\tmfhi %s\n", reg_name(R_T8));  /* clobber $t8 with HI */
         fprintf(cg->out, "\tbeq %s, $zero, .L_flr_%d\n", reg_name(R_T8), lbl);
-        /* reload lhs for XOR sign check (delay slot of beq, always runs) */
+        /* 延迟槽：重新加载被除数用于异或符号检查（beq 延迟槽始终执行） */
         load_val(cg, inst->u.inst.ops[0], R_T8);
         fprintf(cg->out, "\txor %s, %s, %s\n",
                 reg_name(R_T8), reg_name(R_T8), reg_name(R_T9));
@@ -563,7 +649,22 @@ static const char* binary_mnemonic(Opcode op) {
 }
 
 /* ================================================================== */
-/*  Prologue / Epilogue                                                */
+/*  序言 / 尾声 (Prologue / Epilogue)                                  */
+/*                                                                      */
+/*  序言负责：                                                          */
+/*    1. 分配栈帧 (addiu $sp, $sp, -FRAME_SIZE)                         */
+/*    2. 保存 $fp 和 $ra                                                */
+/*    3. 保存 callee-saved $s 寄存器 (phase 2)                         */
+/*    4. 将传入参数从 $a0-$a3 / caller's stack 复制到局部变量槽         */
+/*                                                                      */
+/*  尾声负责：                                                          */
+/*    1. 恢复 callee-saved $s 寄存器 (phase 2)                         */
+/*    2. 恢复 $fp 和 $ra                                               */
+/*    3. 释放栈帧                                                       */
+/*    4. 返回到调用者 (jr $ra)                                          */
+/*                                                                      */
+/*  注意：不可达的基本块（如被 IF_GOTO 跳过的 else 分支）也可能有        */
+/*  j to epilogue 指令，所以尾声必须是单独的函数，不能内联到 return。    */
 /* ================================================================== */
 
 static void emit_prologue(CG* cg) {
@@ -588,14 +689,15 @@ static void emit_prologue(CG* cg) {
         fprintf(cg->out, "\tsw $ra, %d($sp)\n", cg->ra_off);
     fprintf(cg->out, "\tmove $fp, $sp\n");
 
-    /* Phase 2: save callee-saved regs */
+    /* Phase 2: save callee-saved regs.
+       The saved $s area is allocated at the top of the body (next_var_off
+       already includes spill_area_size + num_saved_s*4).  Place them
+       immediately above the spill area so they never overlap. */
     if (cg->phase == 2 && cg->num_saved_s > 0) {
-        /* We'll compute offsets during phase 2 integration.
-           For now, saved_s regs are saved after $fp and $ra. */
-        int base = cg->fp_off - 8;  /* below saved $fp */
+        int base = cg->next_var_off - cg->num_saved_s * 4;
         for (int i = 0; i < cg->num_saved_s; i++) {
             fprintf(cg->out, "\tsw %s, %d($fp)\n",
-                    reg_name(cg->saved_s[i]), base - i * 4);
+                    reg_name(cg->saved_s[i]), base + i * 4);
         }
     }
 
@@ -629,12 +731,12 @@ static void emit_prologue(CG* cg) {
 static void emit_epilogue(CG* cg) {
     fprintf(cg->out, "%s:\n", epilogue_label(cg->func_name));
 
-    /* Restore callee-saved regs (phase 2) */
+    /* Restore callee-saved regs (phase 2) — must match prologue offsets */
     if (cg->phase == 2 && cg->num_saved_s > 0) {
-        int base = cg->fp_off - 8;
+        int base = cg->next_var_off - cg->num_saved_s * 4;
         for (int i = 0; i < cg->num_saved_s; i++) {
             fprintf(cg->out, "\tlw %s, %d($fp)\n",
-                    reg_name(cg->saved_s[i]), base - i * 4);
+                    reg_name(cg->saved_s[i]), base + i * 4);
         }
     }
 
@@ -649,7 +751,18 @@ static void emit_epilogue(CG* cg) {
 }
 
 /* ================================================================== */
-/*  Per-function codegen                                               */
+/*  单函数代码生成流程                                                  */
+/*                                                                      */
+/*  1. 帧分析：确定需要多少栈空间                                       */
+/*  2. Phase 2：运行图着色寄存器分配                                    */
+/*     - 将 RA 结果填入 phys_reg/spill_off 表                           */
+/*     - 扩展帧以容纳溢出区和保存的 $s 寄存器                          */
+/*     - 重新计算帧大小                                                 */
+/*  3. 发射序言                                                         */
+/*  4. 遍历基本块，逐指令发射汇编                                       */
+/*     - 跳过 DEC/PARAM/NOP/PHI/LABEL 等伪指令                         */
+/*     - 二元运算由 emit_binary 处理                                    */
+/*  5. 发射尾声                                                         */
 /* ================================================================== */
 
 static void codegen_function(CG* cg, Value* func) {
@@ -745,7 +858,10 @@ static void codegen_function(CG* cg, Value* func) {
 }
 
 /* ================================================================== */
-/*  Public entry point                                                 */
+/*  公开入口点：对整个 IR 模块生成 MIPS 汇编                           */
+/*                                                                      */
+/*  遍历模块中的每个函数，为其独立执行代码生成。                        */
+/*  Phase 1: 基于栈的朴素方案。Phase 2: 图着色寄存器分配。             */
 /* ================================================================== */
 
 void generate_mips(IRModule* module, FILE* out, int phase) {

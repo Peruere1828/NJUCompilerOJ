@@ -1,16 +1,80 @@
 /**
- * reg_alloc.c — Graph-Colouring Register Allocator (Briggs-style)
+ * reg_alloc.c — 基于图着色的寄存器分配器 (Briggs 乐观着色算法)
  *
- * Algorithm overview:
- *   1. Build a dense index of all live values in the function.
- *   2. Compute liveness (gen/kill → live_in/live_out) per basic block.
- *   3. Build the interference graph: two values interfere if they are
- *      simultaneously live at any program point.
- *   4. Simplify: repeatedly push nodes with degree < K onto a stack.
- *   5. Spill: when all remaining nodes have degree >= K, pick one and
- *      mark it for spilling (remove from graph temporarily).
- *   6. Select: pop nodes from the stack, assign the first available colour.
- *   7. Build the result struct.
+ * ============================================================================
+ * 算法背景
+ * ============================================================================
+ * 寄存器分配是将无限多的虚拟寄存器（IR 中的临时变量）映射到有限物理寄存器
+ * 的过程。这是一个 NP 完全问题，实践中使用图着色近似求解。
+ *
+ * Chaitin (1981) 首次提出将寄存器分配建模为图着色问题：
+ *   - 节点 = 活跃期（live range）
+ *   - 边   = 两个活跃期重叠（同时活跃），即它们不能共享同一寄存器
+ *
+ * Briggs 在 Chaitin 基础上的改进（"乐观着色"）：
+ *   - Chaitin 的溢出策略是悲观的：一旦节点度数 < K，立即标记溢出
+ *   - Briggs 延迟溢出决策到实际着色失败时才标记（select 阶段）
+ *   - 优点：某些高度数节点在邻居被着色后仍可获得颜色
+ *
+ * ============================================================================
+ * 算法流程（7 个步骤）
+ * ============================================================================
+ *
+ *   Step 1: 值索引 (Value Indexing)
+ *     - 遍历函数中所有 IR 指令，收集所有需要寄存器的活跃值
+ *     - 建立全局 Value->id 到稠密局部索引的映射
+ *     - 追踪的值包括：VK_VAR（变量）和 VK_INST（指令结果）
+ *
+ *   Step 2: 活跃性分析 (Liveness Analysis)
+ *     - 经典迭代数据流分析：计算每个基本块的 gen/kill/live_in/live_out
+ *       gen[B]   = 在 B 中被使用且之前未被定义的变量集合
+ *       kill[B]  = 在 B 中被定义的变量集合
+ *       迭代求解: live_out[B] = ∪_{S∈succ(B)} live_in[S]
+ *                 live_in[B]  = gen[B] ∪ (live_out[B] - kill[B])
+ *     - 同时统计 use_count/def_count 用于后续溢出代价估算
+ *     - 估算循环深度（用回边数量近似）作为溢出代价的权重
+ *
+ *   Step 3: 构造冲突图 (Interference Graph)
+ *     - 逐条指令模拟活跃集合的变化
+ *     - 当一条指令定义变量 d 时，d 与当前活跃集合中的所有变量冲突
+ *     - 同时为 live_out/live_in 的边界添加保守冲突（跨基本块）
+ *     - 图以邻接矩阵 (adjacency matrix) 存储，相邻节点的度数双向递增
+ *
+ *   Step 4: 简化 (Simplify)
+ *     - 反复寻找度数 < K 的节点（K = 可用寄存器数）
+ *     - 将找到的节点压入栈中，从图中移除
+ *     - 移除节点时递减所有邻居的度数
+ *     - 此步骤基于图论中的 Kempe 定理：度数 < K 的节点总是可着色的
+ *
+ *   Step 5: 溢出 (Spill) — 仅在简化阶段找不到低度数节点时触发
+ *     - 启发式选择溢出代价最小的节点：
+ *       spill_cost(v) = (use_count + def_count) × (loop_depth × 10 + 1)
+ *                        / (degree + 1)
+ *     - 标记为溢出，从图中移除，继续简化
+ *     - 注意：这里标记的是"可溢出"，真正是否需要溢出在 select 阶段决定
+ *       （Briggs 乐观着色）
+ *
+ *   Step 6: 选择颜色 (Select)
+ *     - 从栈顶到栈底（逆序）弹出节点
+ *     - 对每个节点，检查所有已着色邻居的颜色
+ *     - 分配第一个可用的颜色（在 [colour_base, colour_base+K) 范围内）
+ *     - 如果找不到可用颜色 → 标记为溢出
+ *     - 活跃节点按此方式逐步恢复
+ *
+ *   Step 7: 构建结果 (Build Result)
+ *     - 将着色结果和溢出信息打包为 RegAllocResult
+ *     - 记录哪些 callee-saved 寄存器被使用（供序言/尾声使用）
+ *     - 计算溢出区域的总大小
+ *
+ * ============================================================================
+ * MIPS32 寄存器分配策略
+ * ============================================================================
+ *   - 无函数调用时：使用 $t0-$t7 + $s0-$s7 = 16 个寄存器（K=16）
+ *   - 有函数调用时：仅用 $s0-$s7 = 8 个寄存器（K=8）
+ *     原因：$t0-$t7 是 caller-saved，跨调用会被破坏，必须避免
+ *     简化：我们直接限制分配池而非在调用点保存/恢复 caller-saved 寄存器
+ *   - 保留寄存器：$t8,$t9 (指令选择暂存), $v0,$v1 (返回值),
+ *                 $a0-$a3 (参数传递), $sp,$fp,$ra (栈/帧/返回)
  */
 
 #include "reg_alloc.h"
@@ -23,10 +87,19 @@
 #include "IRbuilder.h"   /* MAX_ID */
 
 /* ================================================================== */
-/*  LiveSet — bit vector for up to 512 values                          */
+/*  LiveSet — 位向量 (bit vector)，支持最多 512 个值                       */
+/*                                                                      */
+/*  使用 16 个 64 位字 (unsigned long long) 实现，共 512 位。              */
+/*  每个位对应一个局部索引的活跃状态：1=活跃，0=不活跃。                     */
+/*  位向量操作（置位、清除、测试、并集、差集）全部内联，避免函数调用开销。   */
+/*                                                                      */
+/*  设计选择：位向量 而非 链表/哈希表，因为：                              */
+/*    1. 操作 O(1) 时间（单条位运算指令）                                  */
+/*    2. 迭代数据流分析中需要频繁计算并集、差集、相等比较                    */
+/*    3. 512 位 = 128 字节，远小于 L1 缓存行                              */
 /* ================================================================== */
-#define LIVE_WORDS 16
-#define LIVE_BITS  (LIVE_WORDS * 64)
+#define LIVE_WORDS 16            /* 16 个 64 位字 */
+#define LIVE_BITS  (LIVE_WORDS * 64) /* 共 512 位 */
 
 typedef struct {
     unsigned long long w[LIVE_WORDS];
@@ -51,7 +124,17 @@ static int ls_popcount(LiveSet* s) {
 }
 
 /* ================================================================== */
-/*  Value indexing — maps global Value ids to dense local indices      */
+/*  ValueIndex — 值索引映射                                             */
+/*                                                                      */
+/*  将全局的 Value->id（稀疏，可能很大）映射为局部的稠密索引 [0..count-1]。 */
+/*  这样做的好处：                                                        */
+/*    1. 内部数组大小 = 活跃值的数量（通常 < 100），而非 MAX_ID (4096+)     */
+/*    2. 邻接矩阵大小为 n_vals²，稠密索引显著减少内存占用                   */
+/*    3. 位向量的索引也使用局部索引                                       */
+/*                                                                      */
+/*  双向映射：                                                           */
+/*    global_to_local[global_id] → local_id  (查表 O(1))                */
+/*    local_to_value[local_id]   → Value*    (反向查 O(1))              */
 /* ================================================================== */
 #define MAX_VALS  1024
 
@@ -85,7 +168,16 @@ static int vx_lookup(ValueIndex* vx, Value* val) {
 }
 
 /* ================================================================== */
-/*  Liveness analysis                                                  */
+/*  RAState — 寄存器分配状态                                            */
+/*                                                                      */
+/*  保存整个寄存器分配过程的所有中间数据：                               */
+/*    - vx: 值索引映射                                                  */
+/*    - bbs[]: 基本块扁平数组                                           */
+/*    - gen/kill/live_in/live_out: 每个基本块的活跃信息                  */
+/*    - adj/degree: 冲突图的邻接矩阵和度数                               */
+/*    - use_count/def_count/loop_depth: 溢出代价估算参数                 */
+/*    - colour[]: 最终着色 (-2=未处理, -1=溢出, >=0=物理寄存器号)         */
+/*    - simplify_stack: 简化阶段使用的栈                                 */
 /* ================================================================== */
 
 typedef struct {
@@ -118,7 +210,7 @@ typedef struct {
     int       simplify_top;
 } RAState;
 
-/* ---- Flat BB array ---- */
+/* ---- 扁平化基本块链表为数组 ---- */
 static int count_bbs(Value* func) {
     int n = 0;
     Value* bb = func->u.func.bb_head;
@@ -138,7 +230,7 @@ static Value** flatten_bbs(Value* func, int* out_n) {
     return arr;
 }
 
-/* ---- Collect all live values (VK_VAR + VK_INST) ---- */
+/* ---- 收集函数中所有活跃值（VK_VAR 和 VK_INST） ---- */
 static void collect_values(RAState* rs) {
     vx_init(&rs->vx);
 
@@ -167,7 +259,7 @@ static void collect_values(RAState* rs) {
     rs->n_vals = rs->vx.count;
 }
 
-/* ---- Instruction is a definition of a value ---- */
+/* ---- 判断指令是否定义 (def) 新值 ---- */
 static int inst_def(RAState* rs, Value* inst) {
     Opcode op = inst->u.inst.opcode;
     /* These opcodes produce a new value */
@@ -184,7 +276,7 @@ static int inst_def(RAState* rs, Value* inst) {
     return -1;
 }
 
-/* ---- Instruction uses which values (writes them to defs array) ---- */
+/* ---- 提取指令使用的 (use) 所有值 ---- */
 static int inst_uses(RAState* rs, Value* inst, int* uses, int max_uses) {
     int n = 0;
     Opcode op = inst->u.inst.opcode;
@@ -215,7 +307,22 @@ static int inst_uses(RAState* rs, Value* inst, int* uses, int max_uses) {
     return n;
 }
 
-/* ---- Compute gen/kill per basic block ---- */
+/* ================================================================== */
+/*  活跃性分析 (Liveness Analysis)                                     */
+/*                                                                      */
+/*  使用迭代数据流分析计算每个基本块的 gen/kill/live_in/live_out。        */
+/*                                                                      */
+/*  公式回顾：                                                          */
+/*    gen[B]    = { v | v 在 B 中被使用，且在此使用之前未被 B 中指令定义 } */
+/*    kill[B]   = { v | v 在 B 中被定义 }                               */
+/*    live_out[B] = ∪_{S∈succ(B)} live_in[S]                           */
+/*    live_in[B]  = gen[B] ∪ (live_out[B] - kill[B])                   */
+/*                                                                      */
+/*  迭代直到不动点：逆序处理基本块以加速收敛。                            */
+/*                                                                      */
+/*  同时收集每个值的 use_count、def_count 和循环深度，                  */
+/*  用于后续的溢出代价估算。                                            */
+/* ================================================================== */
 static void compute_gen_kill(RAState* rs) {
     int nv = rs->n_vals;
     int nb = rs->n_bb;
@@ -254,14 +361,14 @@ static void compute_gen_kill(RAState* rs) {
     }
 }
 
-/* ---- Edge detection for loop depth estimation ---- */
+/* ---- 回边检测：估算循环深度（用于溢出代价权重） ---- */
 static int count_back_edges(Value* bb) {
     /* Simple heuristic: count incoming edges as a proxy for loop depth.
        A node in a loop body has its loop header as a predecessor. */
     return bb->u.bb.num_preds - 1;
 }
 
-/* ---- Iterative liveness analysis ---- */
+/* ---- 迭代数据流求解：计算 live_in / live_out ---- */
 static void compute_liveness(RAState* rs) {
     int nb = rs->n_bb;
 
@@ -325,7 +432,21 @@ static void compute_liveness(RAState* rs) {
     }
 
 /* ================================================================== */
-/*  Interference graph                                                 */
+/*  冲突图 (Interference Graph) 的构建                                  */
+/*                                                                      */
+/*  两个值相互冲突 (interfere) 当且仅当它们在程序的某个点同时活跃。        */
+/*  冲突的变量不能分配同一个寄存器。                                     */
+/*                                                                      */
+/*  构建方法：                                                           */
+/*    1. 对每个基本块，从 live_in 开始逐指令模拟活跃集合的变化            */
+/*    2. 当遇到定义 d 时，d 与当前活跃集合中的所有值冲突                 */
+/*    3. 先移除旧实例（如果存在），然后添加新定义                       */
+/*    4. 在基本块边界，live_out 和 live_in 中的所有值全互连             */
+/*       （保守处理跨基本块的活跃信息）                                   */
+/*                                                                      */
+/*  冲突图使用邻接矩阵 (adjacency matrix) 存储：                         */
+/*    adj[a * n_vals + b] = true  ⇔  a 和 b 冲突                       */
+/*  同时维护 degree[a] = a 的邻居数，用于简化阶段的度数判定。           */
 /* ================================================================== */
 
 static inline bool* adj_ptr(RAState* rs, int a, int b) {
@@ -400,15 +521,33 @@ static void build_interference(RAState* rs) {
 }
 
 /* ================================================================== */
-/*  Graph colouring (Briggs optimistic)                                 */
+/*  Briggs 乐观图着色算法                                               */
+/*                                                                      */
+/*  核心思想：                                                          */
+/*    1. 度数 < K 的节点总是可着色的（Kempe 定理），直接压栈移除         */
+/*    2. 度数 ≥ K 的节点"可能"需要溢出，但推迟决策到 select 阶段         */
+/*    3. 在 select 阶段，如果邻居已用满了 K 种颜色，才真正溢出           */
+/*                                                                      */
+/*  这种"乐观"策略相比 Chaitin 的悲观溢出，能显著减少不必要的溢出。      */
+/*                                                                      */
+/*  K 的值：                                                             */
+/*    - 无调用函数：K = 16（$t0-$t7 + $s0-$s7）                          */
+/*    - 有调用函数：K = 8（仅 $s0-$s7，因为 $t 寄存器跨调用不保留）      */
+/*                                                                      */
+/*  colour_base：                                                        */
+/*    无调用时从 0 开始（$t0），有调用时从 8 开始（$s0）。               */
+/*    这样做的好处是：有调用时所有分配都在 $s 寄存器中，                  */
+/*    无需在调用点保存/恢复 caller-saved 寄存器。                        */
 /* ================================================================== */
 #define K  NUM_ALLOC_REGS
 
+/* ---- 计算溢出代价 ---- */
 static int spill_cost(RAState* rs, int v) {
     return (rs->use_count[v] + rs->def_count[v])
            * (rs->loop_depth[v] * 10 + 1);
 }
 
+/* ---- 简化阶段：反复移除度数 < K 的节点 ---- */
 static void simplify(RAState* rs, int K_eff) {
     int nv = rs->n_vals;
     rs->simplify_top = 0;
@@ -467,6 +606,7 @@ static void simplify(RAState* rs, int K_eff) {
     }
 }
 
+/* ---- 选择阶段：逆序弹出节点，分配第一个可用颜色 ---- */
 static void select_colours(RAState* rs, int K_eff, int colour_base) {
     int nv = rs->n_vals;
 
@@ -512,7 +652,15 @@ static void select_colours(RAState* rs, int K_eff, int colour_base) {
 }
 
 /* ================================================================== */
-/*  Build result                                                       */
+/*  构建最终结果                                                        */
+/*                                                                      */
+/*  将着色信息打包为 RegAllocResult：                                   */
+/*    - 每个值映射到物理寄存器号（0..15）或标记为溢出                     */
+/*    - 溢出的值分配栈上偏移（spill_off）                               */
+/*    - 记录哪些 callee-saved 寄存器被使用（callee_map）                */
+/*                                                                      */
+/*  callee_map 是位掩码：bit i 表示 $s_i 被分配了值。                    */
+/*  序言/尾声据此保存和恢复对应的 $s 寄存器。                            */
 /* ================================================================== */
 
 static RegAllocResult* build_result(RAState* rs) {
@@ -549,7 +697,19 @@ static RegAllocResult* build_result(RAState* rs) {
 }
 
 /* ================================================================== */
-/*  Public interface                                                    */
+/*  公开接口：对一个函数执行图着色寄存器分配                            */
+/*                                                                      */
+/*  allocate_registers(func) 的执行流程：                               */
+/*    Step 1: flatten_bbs   — 将 BB 链表转为数组                       */
+/*    Step 2: collect_values — 收集所有活跃值                           */
+/*    Step 3: compute_gen_kill + compute_liveness — 数据流分析          */
+/*    Step 4: build_interference — 构造冲突图                          */
+/*    Step 5: simplify + select_colours — 着色                         */
+/*    Step 6: build_result — 打包结果                                  */
+/*                                                                      */
+/*  特殊处理：有函数调用的函数只使用 $s 寄存器（callee-saved），         */
+/*  这样就不需要在每个调用点保存/恢复 $t 寄存器。                       */
+/*  相应的 colour_base 和 K_eff 分别设为 8 和 8。                       */
 /* ================================================================== */
 
 RegAllocResult* allocate_registers(Value* func) {

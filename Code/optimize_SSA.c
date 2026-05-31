@@ -1,3 +1,14 @@
+/**
+ * optimize_SSA.c — SSA 形式的常量传播和拷贝折叠
+ *
+ * 在 SSA 形式下，每个变量只有一个定义点，因此常量传播和拷贝折叠特别简单。
+ *
+ * 主要优化（迭代执行直到不动点）：
+ *   1. 常量传播   — 如果 x1 = 5，且唯一的 use 是 y = x1 + 3，则折叠为 y = 8
+ *   2. 拷贝折叠   — 如果 x2 = x1，则后续使用 x2 的地方替换为 x1
+ *   3. 死代码消除 — 移除没有被任何指令使用的 phi 节点和赋值
+ */
+
 #include "optimize_SSA.h"
 
 #include <assert.h>
@@ -6,6 +17,7 @@
 
 #include "IRbuilder.h"
 
+/* 迭代优化直到不动点（最多 10 轮） */
 void optimize_SSA(IRModule* ir_module) {
   if (ir_module == NULL) return;
 

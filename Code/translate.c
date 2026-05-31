@@ -1,3 +1,67 @@
+/**
+ * translate.c — AST 到 IR 的转换 (Translation / Lowering)
+ *
+ * ============================================================================
+ * 概述
+ * ============================================================================
+ * 将语义分析后的 AST（抽象语法树）翻译为 IR（中间表示）三地址码。
+ *
+ * IR 使用线性基本块组织：
+ *   - 每个函数 = 若干基本块（BB）的链表
+ *   - 每个 BB = 若干指令的链表，以 GOTO/RETURN 结尾
+ *   - 控制流由 IF_GOTO（条件分支）和 GOTO（无条件跳转）实现
+ *
+ * ============================================================================
+ * 关键转换模式
+ * ============================================================================
+ *
+ * 1. if-else 语句：
+ *    if (cond) stmt1 [else stmt2]
+ *    →
+ *    entry_bb:
+ *      if cond then goto true_bb
+ *      goto false_bb
+ *    true_bb:
+ *      stmt1
+ *      goto next_bb
+ *    false_bb:
+ *      stmt2 (if present)
+ *      goto next_bb
+ *    next_bb:
+ *      ...
+ *
+ * 2. while 语句：
+ *    while (cond) stmt
+ *    →
+ *    entry_bb:
+ *      goto cond_bb
+ *    cond_bb:
+ *      if cond then goto body_bb
+ *      goto next_bb
+ *    body_bb:
+ *      stmt
+ *      goto cond_bb
+ *    next_bb:
+ *      ...
+ *
+ * 3. 短路求值（&& 和 ||）：
+ *    a && b  →
+ *    if a then goto L1 else goto false_target
+ *    L1:
+ *    if b then goto true_target else goto false_target
+ *
+ *    a || b  →
+ *    if a then goto true_target else goto L1
+ *    L1:
+ *    if b then goto true_target else goto false_target
+ *
+ * 4. 函数调用参数：
+ *    先求值所有参数表达式（生成可能的嵌套 CALL），再统一发射 ARG 指令。
+ *    这确保嵌套调用的 ARG 不会与外部调用的 ARG 交错。
+ *
+ * ============================================================================
+ */
+
 #include "translate.h"
 
 #include <stdlib.h>
@@ -527,9 +591,20 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
   return NULL;
 }
 
-/* Evaluate all argument expressions first (generating inner calls),
-   then emit ARG instructions contiguously.  This prevents inner CALL
-   sequences from interleaving with outer-call ARGs. */
+/* 两阶段参数求值策略：
+ *
+ * 阶段 1 (eval_and_collect_args)：递归求值所有参数表达式
+ *   参数在 AST 中为右递归链表 (arg1, (arg2, (arg3, NULL)))
+ *   先递归后求值 → 得到从左到右的参数顺序
+ *   求值过程中的嵌套 CALL 先发射到 IR 中
+ *
+ * 阶段 2 (translate_Args)：逆序发射 ARG 指令
+ *   ARG 按右到左顺序发射（参数列表从最后一个到第一个）
+ *   这样在 CALL 处逆序取出时，$a0=第1个参数, $a1=第2个参数, ...
+ *
+ * 这种两阶段方法确保嵌套调用（如 f(g(x), h(y))）的正确性：
+ *   先求值 g(x) 和 h(y)（产生对应的 CALL+ARG 指令序列）
+ *   再发射 f 的 ARG 指令（指向 g 和 h 的返回值） */
 static void eval_and_collect_args(IRBuilder* builder, ASTNode* node,
                                    Value** out, int* count) {
   if (node == NULL) return;

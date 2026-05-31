@@ -1,3 +1,67 @@
+/**
+ * destroy_SSA.c — SSA 销毁 (SSA Destruction)
+ *
+ * ============================================================================
+ * 背景
+ * ============================================================================
+ * 中间的 IR 在优化阶段被转换为 SSA (Static Single Assignment) 形式，
+ * 即每个变量只被赋值一次。这大大简化了数据流分析和优化，但在生成机器代码
+ * 之前必须将 SSA 形式销毁，转换回普通的三地址码 (TAC)。
+ *
+ * SSA 销毁的核心难题是 phi 节点 (φ-node)：
+ *   phi 节点在控制流汇合点定义了多个可能的来源值，具体取哪一个取决于
+ *   实际执行时来自哪个前驱基本块。
+ *
+ *   例如：
+ *     if (cond)
+ *       x1 = 1;
+ *     else
+ *       x2 = 2;
+ *     x3 = phi(x1 from then, x2 from else);  ← φ 节点
+ *     write(x3);
+ *
+ *   销毁后应变为：
+ *     if (cond) goto L1 else goto L2
+ *   L1:
+ *     x = 1; goto L3
+ *   L2:
+ *     x = 2; goto L3
+ *   L3:
+ *     write(x);
+ *
+ * ============================================================================
+ * 算法步骤
+ * ============================================================================
+ *
+ * Step 1: cleanup_dead_insts_and_rebuild_cfg
+ *   移除死代码（不可达的基本块内指令），重建 CFG（控制流图）。
+ *   确保每个块都有明确的终结指令（GOTO 或 RETURN）。
+ *
+ * Step 2: split_critical_edges
+ *   关键边：一条从多后继块 (num_succs≥2) 到多前驱块 (num_preds≥2) 的边。
+ *   关键边会导致 phi 销毁时的拷贝错误（多个 phi 同时执行时互相覆盖）。
+ *   解决方法：在关键边中间插入一个空块，使得每个 phi 拷贝串行化。
+ *
+ * Step 3: remove_phi_nodes
+ *   核心步骤。将每个 phi 节点替换为一组 COPY 指令，放在对应前驱块的末尾。
+ *   实现时使用两阶段策略（避免 phi 之间的写入-读取冲突）：
+ *
+ *   阶段 1 — 快照 (Snapshot)：
+ *     对前驱块中的每个 phi 源值，检查它是否会在此批次中被其他 phi 覆写。
+ *     如果是 → 先复制到临时变量。
+ *     如果否 → 直接使用原值。
+ *
+ *   阶段 2 — 写入 (Commit)：
+ *     将所有临时变量（或原值）COPY 到对应的 phi 目标变量。
+ *     此阶段是安全的，因为所有危险的读取都已在阶段 1 完成。
+ *
+ *   例：x=phi(y,z), y=phi(x,w)
+ *     如果直接 COPY: y→x 然后 x→y → 错误！
+ *     两阶段: tmp1=y, tmp2=x; x=tmp1, y=tmp2 → 正确。
+ *
+ * ============================================================================
+ */
+
 #include "destroy_SSA.h"
 
 #include <assert.h>
@@ -11,7 +75,7 @@ static void split_critical_edges(Value* func);
 static void remove_phi_nodes(Value* func);
 static void cleanup_dead_insts_and_rebuild_cfg(Value* func);
 
-// 仅将SSA转为TAC，不优化
+/* 将 SSA 转换为 TAC：清理死代码 → 拆分关键边 → 移除 phi 节点 */
 void destroy_SSA(IRModule* ir_module) {
   Value* cur = ir_module->func_list;
   while (cur) {
@@ -22,6 +86,7 @@ void destroy_SSA(IRModule* ir_module) {
   }
 }
 
+/* ---- 清理死代码并重建 CFG ---- */
 static void cleanup_dead_insts_and_rebuild_cfg(Value* func) {
   Value* bb = func->u.func.bb_head;
   while (bb != NULL) {
@@ -96,8 +161,26 @@ static void cleanup_dead_insts_and_rebuild_cfg(Value* func) {
   build_CFG(func);
 }
 
-// 对于一条CFG边u->v，如果u的后继>=2且v的前驱>=2，此时phi节点的还原成赋值
-// 可能错误覆盖原有的值，因此要加入中间块，变为u->temp->v
+/* 拆分关键边 (Critical Edge Splitting)
+ *
+ * 关键边定义：一条 CFG 边 u→v，其中 u 的出度 ≥ 2 且 v 的入度 ≥ 2。
+ *
+ * 为什么要拆分？phi 节点销毁时，我们在前驱块末尾插入 COPY 指令。
+ * 如果前驱块有多个后继，这些 COPY 会影响其他后继块中的 phi 节点。
+ * 插入中间空块 (u→mid→v) 后，COPY 放在 mid 中，只影响 v。
+ *
+ * 例：拆分前
+ *        if (x) goto A else goto B
+ *      A:  ← 含 phi 节点
+ *      B:  ← 含 phi 节点
+ * 拆分后
+ *        if (x) goto mid_A else goto mid_B
+ *      mid_A: goto A
+ *      mid_B: goto B
+ *      A:  ← 含 phi 节点
+ *      B:  ← 含 phi 节点
+ *
+ * 现在 COPY 放在 mid_A/mid_B 中，各自只影响一个后继。 */
 static void split_critical_edges(Value* func) {
   Value* cur_bb = func->u.func.bb_head;
   while (cur_bb != NULL) {
@@ -163,6 +246,11 @@ static void insert_inst_before(Value* bb, Value* target_inst, Value* new_inst) {
   target_inst->u.inst.pre = new_inst;
 }
 
+/* 移除 phi 节点 — 两阶段并行拷贝算法
+ *
+ * 阶段 1 (快照)：对每个前驱块，收集 phi 源值。
+ *   如果源值会被本批次的另一个 phi 覆写，则先复制到临时变量。
+ * 阶段 2 (写入)：将所有值 COPY 到对应的 phi 目标，顺序安全。 */
 static void remove_phi_nodes(Value* func) {
   Value* bb = func->u.func.bb_head;
   while (bb) {
