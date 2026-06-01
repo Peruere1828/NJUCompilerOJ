@@ -212,21 +212,21 @@ int pass_dce_TAC(Value* func) {
 static int remove_dead_insts_in_bb(Value* func) {
   int changed = 0;
   Value* bb = func->u.func.bb_head;
-  
+
   while (bb != NULL) {
     Value* inst = bb->u.bb.inst_head;
     int dead_zone = 0;
-    
+
     while (inst != NULL) {
       Value* nxt_inst = inst->u.inst.nxt;
-      
+
       if (dead_zone) {
         delete_inst(inst);
         changed = 1;
       } else {
         Opcode op = inst->u.inst.opcode;
         if (op == OP_GOTO || op == OP_RETURN) {
-          dead_zone = 1; 
+          dead_zone = 1;
         }
       }
       inst = nxt_inst;

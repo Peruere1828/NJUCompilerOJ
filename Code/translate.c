@@ -136,8 +136,7 @@ void translate_FunDec(IRBuilder* builder, ASTNode* node, Type* ret_type) {
   if (node->child_count == 4) {
     translate_VarList_Params(builder, node->children[2]);
   }
-
-  }
+}
 
 void translate_VarList_Params(IRBuilder* builder, ASTNode* node) {
   if (node == NULL) return;
@@ -606,7 +605,7 @@ Value* translate_Exp(IRBuilder* builder, ASTNode* node) {
  *   先求值 g(x) 和 h(y)（产生对应的 CALL+ARG 指令序列）
  *   再发射 f 的 ARG 指令（指向 g 和 h 的返回值） */
 static void eval_and_collect_args(IRBuilder* builder, ASTNode* node,
-                                   Value** out, int* count) {
+                                  Value** out, int* count) {
   if (node == NULL) return;
   if (node->child_count == 3) {
     eval_and_collect_args(builder, node->children[2], out, count);

@@ -27,7 +27,8 @@
  * Step 2: build_IDomTree
  *   计算支配树 (Dominator Tree)。
  *   d dom n：从入口到 n 的所有路径都经过 d。
- *   iDom(n)：n 的最近必经支配者（严格支配 n 且不支配任何其他严格支配 n 的节点）。
+ *   iDom(n)：n 的最近必经支配者（严格支配 n 且不支配任何其他严格支配 n
+ * 的节点）。
  *
  * Step 3: insert_phi_nodes
  *   在支配边界 (Dominance Frontier) 处插入 phi 节点。

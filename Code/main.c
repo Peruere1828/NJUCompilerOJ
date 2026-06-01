@@ -1,6 +1,6 @@
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "AST.h"
 #include "config.h"
@@ -31,7 +31,8 @@ extern void check_unclosed_comment();
 int main(int argc, char** argv) {
 #if defined(STAGE_FOUR)
   if (argc <= 2) {
-    printf("Usage: %s <filename> <output_s> [--phase=1|2] [--dump-ir]\n", argv[0]);
+    printf("Usage: %s <filename> <output_s> [--phase=1|2] [--dump-ir]\n",
+           argv[0]);
     return 1;
   }
 #elif defined(STAGE_ONE) || defined(STAGE_TWO)
@@ -109,15 +110,15 @@ int main(int argc, char** argv) {
 
 #ifdef STAGE_FOUR
   if (ir_module != NULL) {
-    int phase = 2;  /* 默认使用图着色寄存器分配 */
+    int phase = 2;   /* 默认使用图着色寄存器分配 */
     int dump_ir = 0; /* 是否输出中间 IR 用于调试 */
 
     /* 解析额外命令行选项 */
     for (int i = 3; i < argc; i++) {
       if (strncmp(argv[i], "--phase=", 8) == 0)
-        phase = atoi(argv[i] + 8);  /* --phase=1 栈式, --phase=2 图着色 */
+        phase = atoi(argv[i] + 8); /* --phase=1 栈式, --phase=2 图着色 */
       else if (strcmp(argv[i], "--dump-ir") == 0)
-        dump_ir = 1;  /* 编译后输出 .ir 文件用于调试 */
+        dump_ir = 1; /* 编译后输出 .ir 文件用于调试 */
     }
 
     /* 调试模式：输出中间 IR 到 .ir 文件 */

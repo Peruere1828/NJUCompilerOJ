@@ -1,8 +1,9 @@
 #ifndef CODEGEN_H
 #define CODEGEN_H
 
-#include "IR.h"
 #include <stdio.h>
+
+#include "IR.h"
 
 /**
  * Generate MIPS32 assembly for the entire IR module.

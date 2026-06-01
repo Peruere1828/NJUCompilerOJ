@@ -135,15 +135,15 @@ static void cleanup_dead_insts_and_rebuild_cfg(Value* func) {
   bb = func->u.func.bb_head;
   while (bb != NULL) {
     Value* tail = bb->u.bb.inst_tail;
-    if (!tail || (tail->u.inst.opcode != OP_GOTO
-                  && tail->u.inst.opcode != OP_RETURN)) {
+    if (!tail ||
+        (tail->u.inst.opcode != OP_GOTO && tail->u.inst.opcode != OP_RETURN)) {
       Value* next = bb->u.bb.next_bb;
       if (next) {
         Value* g = create_value(VK_INST, NULL);
-        g->u.inst.opcode   = OP_GOTO;
-        g->u.inst.num_ops  = 1;
-        g->u.inst.ops      = (Value**)malloc(sizeof(Value*));
-        g->u.inst.ops[0]   = next;
+        g->u.inst.opcode = OP_GOTO;
+        g->u.inst.num_ops = 1;
+        g->u.inst.ops = (Value**)malloc(sizeof(Value*));
+        g->u.inst.ops[0] = next;
         g->u.inst.parent_bb = bb;
         g->u.inst.pre = bb->u.bb.inst_tail;
         g->u.inst.nxt = NULL;
@@ -290,7 +290,7 @@ static void remove_phi_nodes(Value* func) {
              splitting).  Use the phi's own result as a safe fallback — this
              preserves the existing value along the new edge rather than
              crashing the compiler. */
-          assert(src_val != NULL);  /* CFG terminator fix should prevent this */
+          assert(src_val != NULL); /* CFG terminator fix should prevent this */
           srcs[i] = src_val;
         }
 
@@ -354,7 +354,7 @@ static void remove_phi_nodes(Value* func) {
         for (int j = 0; j < phi->u.inst.num_ops; j += 2) {
           remove_use(phi->u.inst.ops[j], phi);
         }
-        
+
         if (phi->u.inst.pre)
           phi->u.inst.pre->u.inst.nxt = phi->u.inst.nxt;
         else

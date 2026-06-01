@@ -46,9 +46,9 @@
 
 #include "IR.h"
 
-#define NUM_ALLOC_REGS  16    /* $t0..$t7 + $s0..$s7 = 16 个 */
-#define REG_CALLER_BASE  0    /* $t0 起始索引 */
-#define REG_CALLEE_BASE  8    /* $s0 起始索引 */
+#define NUM_ALLOC_REGS 16 /* $t0..$t7 + $s0..$s7 = 16 个 */
+#define REG_CALLER_BASE 0 /* $t0 起始索引 */
+#define REG_CALLEE_BASE 8 /* $s0 起始索引 */
 
 /**
  * RegAllocResult — 一个函数的寄存器分配结果
@@ -65,22 +65,22 @@
  *                        序言/尾声据此保存/恢复对应的 $s 寄存器
  */
 typedef struct {
-    int   n_vals;                /* 分配的值总数 */
-    int*  value_id;              /* [local_idx] -> 全局 Value->id */
-    int*  phys_reg;              /* [local_idx] -> 物理寄存器号
-                                    0..7 = $t0..$t7, 8..15 = $s0..$s7, -1 = 溢出 */
-    char* spilled;               /* [local_idx] -> 1 表示溢出 */
-    int*  stack_offset;          /* [local_idx] -> 从 $fp 起的偏移 */
-    int   spill_area_size;       /* 溢出区总字节数（4 对齐） */
-    unsigned char callee_map;    /* bit i=1 表示 $s_i 被使用 */
+  int n_vals;               /* 分配的值总数 */
+  int* value_id;            /* [local_idx] -> 全局 Value->id */
+  int* phys_reg;            /* [local_idx] -> 物理寄存器号
+                               0..7 = $t0..$t7, 8..15 = $s0..$s7, -1 = 溢出 */
+  char* spilled;            /* [local_idx] -> 1 表示溢出 */
+  int* stack_offset;        /* [local_idx] -> 从 $fp 起的偏移 */
+  int spill_area_size;      /* 溢出区总字节数（4 对齐） */
+  unsigned char callee_map; /* bit i=1 表示 $s_i 被使用 */
 } RegAllocResult;
 
 /**
  * 对一个函数执行图着色寄存器分配。
  *
  * @param func  函数 IR Value（VK_FUNCTION 类型）
- * @return      堆上分配的 RegAllocResult；用完后需调用 free_reg_alloc_result() 释放
- *              如果函数没有基本块或活跃值，返回 NULL
+ * @return      堆上分配的 RegAllocResult；用完后需调用 free_reg_alloc_result()
+ * 释放 如果函数没有基本块或活跃值，返回 NULL
  */
 RegAllocResult* allocate_registers(Value* func);
 
