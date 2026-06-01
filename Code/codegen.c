@@ -900,7 +900,6 @@ static void codegen_function(CG* cg, Value* func) {
 
 /* ================================================================== */
 /*  公开入口点：对整个 IR 模块生成 MIPS 汇编                           */
-/*                                                                      */
 /*  遍历模块中的每个函数，为其独立执行代码生成。                        */
 /*  Phase 1: 基于栈的朴素方案。Phase 2: 图着色寄存器分配。             */
 /* ================================================================== */
@@ -921,7 +920,4 @@ void generate_mips(IRModule* module, FILE* out, int phase) {
     codegen_function(&cg, func);
     func = func->u.func.next_func;
   }
-
-  /* For stand-alone spim execution: add a tiny _start / exit wrapper? */
-  /* Not needed — spim's built-in exception handler handles exit. */
 }
